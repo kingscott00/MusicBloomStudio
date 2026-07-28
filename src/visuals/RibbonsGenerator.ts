@@ -57,8 +57,8 @@ export class RibbonsGenerator implements VisualGenerator {
         velocity: note.velocity,
         life: 1,
         phase: note.note * 0.47 + state.sequence * 1.17,
-        headX: -0.08,
-        headY: 0.5,
+        headX: 0.12 + ((note.note % 12) / 12) * 0.5,
+        headY: 0.81 - registerPosition(note.note) * 0.63,
         direction: Math.sign(state.lastInterval || 1),
         points: [],
         idle: false,
@@ -75,6 +75,7 @@ export class RibbonsGenerator implements VisualGenerator {
   }
 
   render(context: CanvasRenderingContext2D, frame: VisualFrame): void {
+    this.syncHeldVoices(frame);
     if (!this.ribbons.length) this.addIdleRibbon();
     const { width, height, time, delta, params, music, dynamics } = frame;
     const profile = harmonyProfile(music.chord.quality);
@@ -91,7 +92,12 @@ export class RibbonsGenerator implements VisualGenerator {
       const ribbon = this.ribbons[index];
       const force = velocityCurve(ribbon.velocity);
       const register = registerPosition(ribbon.note);
-      const held = music.notes.some((note) => note.note === ribbon.note);
+      const voice = frame.voices.find(
+        (candidate) => candidate.note === ribbon.note,
+      );
+      const held = voice?.phase === "attack" || voice?.phase === "held";
+      const sustained = voice?.phase === "sustain";
+      const voiceEnergy = voice?.energy ?? 0;
       const speed =
         (0.000018 + params.speed * 0.0000012) *
         (0.62 + force * 0.64) *
@@ -110,11 +116,16 @@ export class RibbonsGenerator implements VisualGenerator {
       const registerY = 0.81 - register * 0.63;
       const harmonicWave =
         Math.sin(
-          ribbon.headX * Math.PI * (2.1 + profile.crystalline * 0.8) +
+          ribbon.headX *
+            Math.PI *
+            (2.1 + profile.crystalline * 0.8 + profile.directionalPull * 0.35) +
             time * 0.00042 * (8 + params.speed) +
             ribbon.phase,
         ) *
-        (0.035 + profile.float * 0.045 + dynamics.held * 0.018);
+        (0.035 +
+          profile.float * 0.045 +
+          profile.curvature * 0.03 +
+          dynamics.held * 0.018);
       const slowCurrent =
         Math.sin(time * 0.00013 + ribbon.phase * 0.7) *
         (params.autoMotion ? 0.055 : 0.015);
@@ -128,17 +139,33 @@ export class RibbonsGenerator implements VisualGenerator {
       ribbon.points.push({
         x: ribbon.headX * width,
         y: ribbon.headY * height,
-        energy: clamp(
-          0.18 + force * 0.42 + dynamics.attack * 0.35 + dynamics.held * 0.24,
-          0,
-          1,
-        ),
+        energy:
+          clamp(
+            0.18 + force * 0.42 + dynamics.attack * 0.35 + dynamics.held * 0.24,
+            0,
+            1,
+          ) *
+          clamp(
+            0.38 +
+              voiceEnergy * 0.62 +
+              Math.min(0.16, (voice?.heldDuration ?? 0) / 12000),
+            0,
+            1,
+          ),
       });
       if (ribbon.points.length > maxPoints)
         ribbon.points.splice(0, ribbon.points.length - maxPoints);
       ribbon.life -=
-        delta * (music.sustain ? 0.000035 : ribbon.idle ? 0.000002 : 0.000095);
-      if (held) ribbon.life = Math.min(1, ribbon.life + 0.02);
+        delta *
+        (sustained || music.sustain
+          ? 0.000025
+          : voice?.phase === "release"
+            ? 0.000075 * (1.2 - voice.release)
+            : ribbon.idle
+              ? 0.000002
+              : 0.00013);
+      if (held || sustained)
+        ribbon.life = Math.min(1, ribbon.life + 0.012 + voiceEnergy * 0.012);
 
       if (ribbon.points.length < 4) continue;
       this.drawRibbon(context, frame, ribbon, index, profile);
@@ -154,6 +181,36 @@ export class RibbonsGenerator implements VisualGenerator {
       music.notes.length === 0
     )
       this.addIdleRibbon();
+  }
+
+  private syncHeldVoices(frame: VisualFrame): void {
+    for (const voice of frame.voices) {
+      if (
+        voice.phase === "release" ||
+        this.ribbons.some(
+          (ribbon) => ribbon.note === voice.note && !ribbon.idle,
+        )
+      )
+        continue;
+      const root =
+        frame.music.chord.root ?? frame.music.notes[0]?.note ?? voice.note;
+      const interval = (voice.note - root + 120) % 12;
+      this.ribbons.push({
+        note: voice.note,
+        velocity: voice.velocity,
+        life: Math.max(0.5, voice.energy),
+        phase:
+          voice.note * 0.47 +
+          frame.music.sequence * 1.17 +
+          voice.heldDuration * 0.0002,
+        headX: 0.12 + (interval / 12) * 0.5 + hashNoise(voice.note, 11) * 0.06,
+        headY: 0.81 - registerPosition(voice.note) * 0.63,
+        direction: Math.sign(frame.music.lastInterval || 1),
+        points: [],
+        idle: false,
+      });
+    }
+    this.ribbons = this.ribbons.slice(-12);
   }
 
   private drawRibbon(
@@ -193,7 +250,10 @@ export class RibbonsGenerator implements VisualGenerator {
               strand * 0.8 +
               frame.time * 0.001,
           ) *
-          (2.2 + profile.warp * 6 + frame.dynamics.rhythm * 4);
+          (2.2 +
+            profile.warp * 6 +
+            profile.instability * 5 +
+            frame.dynamics.rhythm * 4);
         const x =
           point.x +
           curl * centered * 0.22 +
@@ -204,7 +264,8 @@ export class RibbonsGenerator implements VisualGenerator {
           point.y +
           separation * Math.sin(progress * Math.PI) +
           curl +
-          profile.inward * age * age * 8;
+          profile.inward * age * age * 8 +
+          profile.directionalPull * progress * progress * 12;
         if (pointIndex === 0) context.moveTo(x, y);
         else context.lineTo(x, y);
       }

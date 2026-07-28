@@ -23,7 +23,6 @@ export function usePerformance(preferFlats: boolean) {
         event.velocity,
         event.timestamp,
       );
-    else analyzer.current.registerRelease(event.note, event.timestamp);
     setHeldState((state) => applyNoteEvent(state, event));
   }, []);
 
@@ -52,12 +51,13 @@ export function usePerformance(preferFlats: boolean) {
     [sendEvent],
   );
   const sustain = useCallback(
-    (down: boolean) => setHeldState((state) => applySustain(state, down)),
+    (down: boolean) =>
+      setHeldState((state) => applySustain(state, down, performance.now())),
     [],
   );
   const clearSource = useCallback(
     (source: NoteSource) =>
-      setHeldState((state) => releaseSource(state, source)),
+      setHeldState((state) => releaseSource(state, source, performance.now())),
     [],
   );
   const clearAll = useCallback(() => {
@@ -85,10 +85,11 @@ export function usePerformance(preferFlats: boolean) {
         heldState.sustain,
         performance.now(),
         preferFlats,
+        heldState.releases,
+        stableChord,
       ),
-      chord: stableChord,
     }),
-    [notes, heldState.sustain, preferFlats, stableChord],
+    [notes, heldState.sustain, heldState.releases, preferFlats, stableChord],
   );
 
   return { music, noteOn, noteOff, sustain, sendEvent, clearSource, clearAll };

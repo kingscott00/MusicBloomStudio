@@ -88,14 +88,23 @@ src/
 
 The animation loop and generator state live outside React rendering. React updates only when musical or interface state changes. Canvas sizing is handled with `ResizeObserver`, pixel density is capped, hidden tabs stop drawing, and all MIDI and animation listeners are cleaned up.
 
+The visual engine consumes per-note musical lifecycles that separate attack,
+held duration, release, and sustain-linger energy. Every sounding pitch remains
+a simultaneous visual voice. Stabilized chord roots, qualities, inversions, and
+extensions map to physical profiles—openness, curvature, instability,
+directional pull, crystalline stretch, halos, and outer layers—rather than only
+changing color.
+
 Adaptive quality is enabled by default. It tunes effective pixel density and
 generator detail when active-frame performance falls, caps fullscreen
 resolution more conservatively, and reduces calm idle scenes to approximately
 30 FPS (18 FPS with reduced motion). Per-particle radial gradients were replaced
 with cheaper layered light primitives, and every generator has a bounded
 population. Quality-aware active caps (120/90/60 FPS) also prevent high-refresh
-displays from doing unnecessary canvas work. The optional Performance Monitor
-in Visual Controls reports FPS, active elements, and the current quality scale.
+displays from doing unnecessary canvas work. The compact Performance &
+Diagnostics section exposes Auto/High/Balanced/Low quality and an optional live
+monitor for renderer statistics, held notes, chord identity, and musical
+envelopes.
 
 The visual system follows the project’s
 [Harmonic Bioluminescence](docs/ALGORITHMIC_PHILOSOPHY.md) generative-art

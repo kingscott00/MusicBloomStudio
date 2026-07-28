@@ -19,6 +19,7 @@ import {
   pitchPosition,
   registerPosition,
   velocityCurve,
+  voiceComposition,
 } from "./musicMapping";
 
 interface Orbiter extends Spark {
@@ -82,17 +83,23 @@ export class OrbitGenerator implements VisualGenerator {
   render(context: CanvasRenderingContext2D, frame: VisualFrame): void {
     const { width, height, time, delta, params, music } = frame;
     const latestNote = music.lastAttack?.note ?? 60;
+    const composition = voiceComposition(frame.voices);
     const profile = harmonyProfile(music.chord.quality);
     const motionScale = params.reducedMotion ? 0.35 : 1;
     const centerX =
       width *
       (0.53 +
-        pitchPosition(latestNote) * 0.055 +
+        (composition.count ? composition.pitch : pitchPosition(latestNote)) *
+          0.055 +
         (params.autoMotion ? Math.sin(time * 0.000085) * 0.065 : 0));
     const centerY =
       height *
       (0.5 +
-        (0.5 - registerPosition(latestNote)) * 0.08 +
+        (0.5 -
+          (composition.count
+            ? composition.register
+            : registerPosition(latestNote))) *
+          0.08 +
         (params.autoMotion ? Math.cos(time * 0.00011) * 0.035 : 0));
     const base = Math.min(width, height) * (0.085 + params.bloom / 1800);
 
@@ -102,7 +109,14 @@ export class OrbitGenerator implements VisualGenerator {
     }
     this.reconfiguration *= Math.exp(-delta / 700);
 
-    this.drawCore(context, frame, centerX, centerY, base, latestNote);
+    this.drawCore(
+      context,
+      frame,
+      centerX,
+      centerY,
+      base,
+      music.chord.root ?? latestNote,
+    );
     this.drawOrbits(
       context,
       frame,
@@ -164,11 +178,12 @@ export class OrbitGenerator implements VisualGenerator {
   ): void {
     const { time, params } = frame;
     const noteSources =
-      frame.music.notes.length > 0
-        ? frame.music.notes
+      frame.voices.length > 0
+        ? frame.voices.filter((voice) => voice.energy > 0.035)
         : frame.music.recentNotes.slice(-3).map((event) => ({
             note: event.note,
             velocity: event.velocity,
+            energy: 0.22,
           }));
     const ringCount = qualityCount(
       frame,
@@ -193,12 +208,13 @@ export class OrbitGenerator implements VisualGenerator {
       const radius =
         base *
         (1.05 + ring * 0.58 + register * 0.7) *
-        (0.92 + profile.openness * 0.08);
+        (0.86 + profile.openness * 0.08 + profile.stretch * 0.08);
       const direction = ring % 2 === 0 ? 1 : -1;
       const tilt =
         0.26 +
         ((note % 12) / 12) * 0.5 +
         profile.float * 0.12 +
+        profile.inward * 0.08 +
         Math.sin(ring * 3.1) * 0.05;
       const rotation =
         ring * 0.56 +
@@ -208,22 +224,25 @@ export class OrbitGenerator implements VisualGenerator {
           direction *
           motionScale *
           (1 + frame.dynamics.rhythm * 0.7) +
-        this.reconfiguration * direction * 0.28;
+        this.reconfiguration * direction * 0.28 +
+        profile.directionalPull * Math.sin(time * 0.00038 + ring) * 0.24;
       const wobble =
         1 +
-        Math.sin(time * 0.0008 + ring * 1.6) * (0.014 + profile.warp * 0.055);
+        Math.sin(time * 0.0008 + ring * 1.6) *
+          (0.014 + profile.warp * 0.055 + profile.instability * 0.04);
       const color = noteColor(frame, note, ring * 0.027);
       const alpha =
         0.11 +
         frame.dynamics.held * 0.11 +
         frame.dynamics.attack * 0.12 +
-        (source ? velocityCurve(source.velocity) * 0.1 : 0);
+        (source ? velocityCurve(source.velocity) * 0.1 : 0) +
+        (source && "energy" in source ? source.energy * 0.08 : 0);
 
       context.save();
       context.rotate(rotation);
       context.scale(1, tilt);
       context.beginPath();
-      if (profile.warp > 0.42) {
+      if (profile.warp > 0.42 || profile.crystalline > 0.7) {
         const segments = Math.max(32, Math.round(60 * frame.qualityScale));
         for (let step = 0; step <= segments; step += 1) {
           const angle = (step / segments) * Math.PI * 2;
@@ -231,7 +250,8 @@ export class OrbitGenerator implements VisualGenerator {
             1 +
             Math.sin(angle * (3 + (ring % 3)) + time * 0.0013) *
               profile.warp *
-              0.045;
+              0.045 +
+            Math.cos(angle * 3) * profile.crystalline * 0.035;
           const px = Math.cos(angle) * radius * deformation * wobble;
           const py = Math.sin(angle) * radius;
           if (step === 0) context.moveTo(px, py);
@@ -321,6 +341,9 @@ export class OrbitGenerator implements VisualGenerator {
     context.save();
     context.globalCompositeOperation = "lighter";
     for (const orbiter of this.orbiters) {
+      const voice = frame.voices.find(
+        (candidate) => candidate.note === orbiter.note,
+      );
       orbiter.targetRadius =
         base * (1.1 + registerPosition(orbiter.note) * 4.7);
       orbiter.radius = lerp(
@@ -334,7 +357,17 @@ export class OrbitGenerator implements VisualGenerator {
         (0.6 + frame.params.speed / 45) *
         motionScale *
         (1 + frame.dynamics.rhythm * 0.8);
-      orbiter.life -= frame.delta * (frame.music.sustain ? 0.00012 : 0.00027);
+      orbiter.life -=
+        frame.delta *
+        (voice?.phase === "sustain"
+          ? 0.000035
+          : voice?.phase === "release"
+            ? 0.00016 * (1.15 - voice.release)
+            : voice
+              ? 0.000045
+              : 0.0003);
+      if (voice && voice.phase !== "release")
+        orbiter.life = Math.min(1.25, orbiter.life + voice.energy * 0.004);
       const eccentricity = 0.38 + Math.abs(orbiter.tilt);
       const x = cx + Math.cos(orbiter.angle) * orbiter.radius;
       const y =

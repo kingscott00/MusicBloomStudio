@@ -11,20 +11,27 @@ const event = (
   type: NoteEvent["type"],
   note = 60,
   source: NoteEvent["source"] = "midi",
+  timestamp = 10,
 ): NoteEvent => ({
   type,
   note,
   velocity: type === "noteon" ? 90 : 0,
   channel: 0,
   source,
-  timestamp: 10,
+  timestamp,
 });
 
 describe("held note state", () => {
   it("adds and removes ordinary notes", () => {
     const on = applyNoteEvent(createHeldNoteState(), event("noteon"));
     expect(on.notes.get(60)?.physicallyHeld).toBe(true);
-    expect(applyNoteEvent(on, event("noteoff")).notes.size).toBe(0);
+    const off = applyNoteEvent(on, event("noteoff", 60, "midi", 60));
+    expect(off.notes.size).toBe(0);
+    expect(off.releases[0]).toMatchObject({
+      note: 60,
+      startedAt: 10,
+      releasedAt: 60,
+    });
   });
 
   it("holds released notes while sustain is down and clears them when lifted", () => {
@@ -35,7 +42,12 @@ describe("held note state", () => {
       physicallyHeld: false,
       sustained: true,
     });
-    expect(applySustain(released, false).notes.size).toBe(0);
+    const pedalUp = applySustain(released, false, 200);
+    expect(pedalUp.notes.size).toBe(0);
+    expect(pedalUp.releases[0]).toMatchObject({
+      releasedAt: 200,
+      releasedFromSustain: true,
+    });
   });
 
   it("clears only notes from a disconnected source", () => {
@@ -46,5 +58,15 @@ describe("held note state", () => {
     state = applyNoteEvent(state, event("noteon", 64, "screen"));
     const cleared = releaseSource(state, "midi");
     expect([...cleared.notes.keys()]).toEqual([64]);
+  });
+
+  it("releasing one chord tone preserves the remaining notes", () => {
+    let state = createHeldNoteState();
+    for (const note of [59, 63, 66])
+      state = applyNoteEvent(state, event("noteon", note));
+    state = applyNoteEvent(state, event("noteoff", 63, "midi", 80));
+
+    expect([...state.notes.keys()]).toEqual([59, 66]);
+    expect(state.releases.at(-1)?.note).toBe(63);
   });
 });

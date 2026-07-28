@@ -1,10 +1,13 @@
 import type {
   ChordQuality,
+  DetectedChord,
   HeldNote,
   MusicalNoteImpulse,
   MusicalState,
+  ReleasedNote,
 } from "../types";
 import { detectChord } from "./chords";
+import { createNoteLifecycles } from "./envelopes";
 import { clamp } from "../utils/math";
 
 const qualityTension: Partial<Record<ChordQuality, number>> = {
@@ -26,7 +29,6 @@ const qualityTension: Partial<Record<ChordQuality, number>> = {
 
 export class MusicalAnalyzer {
   private recentOnsets: MusicalNoteImpulse[] = [];
-  private recentReleases: Array<{ note: number; timestamp: number }> = [];
   private previousNote: number | null = null;
   private lastOnset = 0;
   private lastIntervalValue = 0;
@@ -53,16 +55,8 @@ export class MusicalAnalyzer {
     );
   }
 
-  registerRelease(note: number, timestamp: number): void {
-    this.recentReleases.push({ note, timestamp });
-    this.recentReleases = this.recentReleases.filter(
-      (event) => timestamp - event.timestamp < 3000,
-    );
-  }
-
   reset(): void {
     this.recentOnsets = [];
-    this.recentReleases = [];
     this.previousNote = null;
     this.lastOnset = 0;
     this.lastIntervalValue = 0;
@@ -75,8 +69,10 @@ export class MusicalAnalyzer {
     sustain: boolean,
     now: number,
     preferFlats: boolean,
+    releases: ReleasedNote[] = [],
+    stabilizedChord?: DetectedChord,
   ): MusicalState {
-    const currentChord = detectChord(notes, preferFlats);
+    const currentChord = stabilizedChord ?? detectChord(notes, preferFlats);
     if (currentChord.label !== this.chordLabel) {
       this.chordLabel = currentChord.label;
       this.chordChangedAt = now;
@@ -84,8 +80,8 @@ export class MusicalAnalyzer {
     const recentNotes = this.recentOnsets.filter(
       (event) => now - event.timestamp < 4000,
     );
-    const recentReleases = this.recentReleases.filter(
-      (event) => now - event.timestamp < 2200,
+    const recentReleases = releases.filter(
+      (event) => now - event.releasedAt < 4200,
     );
     const velocities = notes.map((note) => note.velocity);
     const averageVelocity = velocities.length
@@ -138,7 +134,12 @@ export class MusicalAnalyzer {
     );
     const releaseEnergy = clamp(
       recentReleases.reduce(
-        (sum, event) => sum + Math.exp(-(now - event.timestamp) / 650),
+        (sum, event) =>
+          sum +
+          Math.exp(
+            -(now - event.releasedAt) /
+              (event.releasedFromSustain ? 1800 : 780),
+          ),
         0,
       ) / 3,
       0,
@@ -180,7 +181,7 @@ export class MusicalAnalyzer {
       attackImpulse,
       heldEnergy,
       releaseEnergy,
-      lastReleaseAt: recentReleases[recentReleases.length - 1]?.timestamp ?? 0,
+      lastReleaseAt: recentReleases[recentReleases.length - 1]?.releasedAt ?? 0,
       sustainEnergy,
       chordStability,
       chordChangedAt: this.chordChangedAt,
@@ -188,6 +189,7 @@ export class MusicalAnalyzer {
       lastNote,
       lastAttack,
       recentNotes,
+      noteLifecycles: createNoteLifecycles(notes, releases, now),
     };
   }
 }

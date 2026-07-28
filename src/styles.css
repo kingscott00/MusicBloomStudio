@@ -559,36 +559,54 @@ select,
   margin-bottom: 12px;
 }
 
-.diagnostics {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
+.performance-diagnostics {
+  margin: 4px 0 14px;
+  overflow: hidden;
+  border: 1px solid rgba(174, 202, 255, 0.16);
+  border-radius: 11px;
+  background: rgba(112, 145, 205, 0.055);
 }
 
-.diagnostics-toggle {
+.performance-diagnostics-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 3px 0;
+  padding: 10px 11px;
   border: 0;
-  color: #929db0;
+  color: #c3cde0;
   background: transparent;
-  font-size: 9px;
+  font-size: 10px;
+  font-weight: 570;
+  letter-spacing: 0.01em;
 }
 
-.diagnostics-toggle span:last-child {
+.performance-diagnostics-heading:hover {
+  background: rgba(174, 202, 255, 0.05);
+}
+
+.performance-diagnostics-heading span:last-child {
   color: #758197;
-  font-size: 8px;
+  font-size: 7px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
+.performance-diagnostics-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 11px 11px;
+}
+
+.performance-diagnostics-body .toggle-row {
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
+}
+
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
-  margin-top: 9px;
 }
 
 .metric {

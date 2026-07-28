@@ -18,6 +18,26 @@ export interface HeldNote {
   sustained: boolean;
 }
 
+export interface ReleasedNote {
+  note: number;
+  velocity: number;
+  startedAt: number;
+  releasedAt: number;
+  source: NoteSource;
+  releasedFromSustain: boolean;
+}
+
+export interface NoteLifecycle {
+  id: string;
+  note: number;
+  velocity: number;
+  startedAt: number;
+  releasedAt: number | null;
+  physicallyHeld: boolean;
+  sustained: boolean;
+  releasedFromSustain: boolean;
+}
+
 export interface MusicalNoteImpulse {
   sequence: number;
   note: number;
@@ -77,6 +97,7 @@ export interface MusicalState {
   lastNote: number | null;
   lastAttack: MusicalNoteImpulse | null;
   recentNotes: MusicalNoteImpulse[];
+  noteLifecycles: NoteLifecycle[];
 }
 
 export type VisualMode = "bloom" | "orbit" | "ribbons" | "constellation";
@@ -116,6 +137,13 @@ export interface RenderMetrics {
   activeElements: number;
   qualityScale: number;
   qualityLabel: string;
+  heldNotes: number;
+  chordRoot: number | null;
+  chordQuality: ChordQuality;
+  attackEnergy: number;
+  heldEnergy: number;
+  releaseEnergy: number;
+  sustainEnergy: number;
 }
 
 export interface ColorPalette {
@@ -166,4 +194,21 @@ export interface VisualFrame {
   background: string;
   qualityScale: number;
   dynamics: VisualDynamics;
+  voices: VisualNoteVoice[];
+}
+
+export type VisualNotePhase = "attack" | "held" | "sustain" | "release";
+
+export interface VisualNoteVoice {
+  id: string;
+  note: number;
+  velocity: number;
+  phase: VisualNotePhase;
+  age: number;
+  heldDuration: number;
+  attack: number;
+  hold: number;
+  release: number;
+  sustain: number;
+  energy: number;
 }

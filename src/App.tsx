@@ -12,6 +12,7 @@ import {
 import { VisualControls } from "./components/VisualControls";
 import { useMidi } from "./hooks/useMidi";
 import { usePerformance } from "./hooks/usePerformance";
+import { devNotesFromSearch } from "./music/devSimulation";
 import {
   builtInPresets,
   defaultParams,
@@ -60,10 +61,19 @@ export default function App() {
     activeElements: 0,
     qualityScale: 0.86,
     qualityLabel: "Auto 86%",
+    heldNotes: 0,
+    chordRoot: null,
+    chordQuality: "none",
+    attackEnergy: 0,
+    heldEnergy: 0,
+    releaseEnergy: 0,
+    sustainEnergy: 0,
   });
   const canvasRef = useRef<VisualCanvasHandle>(null);
   const stageRef = useRef<HTMLElement>(null);
   const performance = usePerformance(preferFlats);
+  const devNoteOn = performance.noteOn;
+  const devNoteOff = performance.noteOff;
   const midi = useMidi({
     onNote: performance.sendEvent,
     onSustain: performance.sustain,
@@ -76,6 +86,15 @@ export default function App() {
     () => [...builtInPresets, ...customPresets],
     [customPresets],
   );
+
+  useEffect(() => {
+    const devNotes = devNotesFromSearch(window.location.search);
+    if (!devNotes.length) return;
+    for (const note of devNotes) devNoteOn(note, 104, "screen");
+    return () => {
+      for (const note of devNotes) devNoteOff(note, "screen");
+    };
+  }, [devNoteOff, devNoteOn]);
 
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({ params, preferFlats }));

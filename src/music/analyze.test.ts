@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { HeldNote } from "../types";
+import type { HeldNote, ReleasedNote } from "../types";
 import { MusicalAnalyzer } from "./analyze";
+import { detectChord } from "./chords";
 
 const held = (note: number, velocity: number, sustained = false): HeldNote => ({
   note,
@@ -49,13 +50,36 @@ describe("MusicalAnalyzer envelopes", () => {
     expect(loudState.energy).toBeGreaterThan(quietState.energy);
   });
 
-  it("tracks release and sustain-linger energy", () => {
+  it("derives release energy only from completed note lifecycles", () => {
     const analyzer = new MusicalAnalyzer();
     analyzer.registerOnset(60, 100, 100);
-    analyzer.registerRelease(60, 260);
-    const state = analyzer.analyze([held(60, 100, true)], true, 280, false);
+    const release: ReleasedNote = {
+      note: 60,
+      velocity: 100,
+      startedAt: 100,
+      releasedAt: 260,
+      source: "midi",
+      releasedFromSustain: false,
+    };
+    const state = analyzer.analyze([], false, 280, false, [release]);
 
     expect(state.releaseEnergy).toBeGreaterThan(0);
-    expect(state.sustainEnergy).toBeGreaterThan(0);
+    expect(state.sustainEnergy).toBe(0);
+  });
+
+  it("updates visual harmony from the stabilized chord as one state", () => {
+    const analyzer = new MusicalAnalyzer();
+    const majorNotes = [held(59, 90), held(63, 90), held(66, 90)];
+    const minorNotes = [held(59, 90), held(62, 90), held(66, 90)];
+    const major = detectChord(majorNotes);
+    const minor = detectChord(minorNotes);
+
+    const first = analyzer.analyze(majorNotes, false, 1000, false, [], major);
+    const second = analyzer.analyze(minorNotes, false, 1200, false, [], minor);
+
+    expect(first.chord.quality).toBe("major");
+    expect(second.chord.quality).toBe("minor");
+    expect(second.tension).not.toBe(first.tension);
+    expect(second.chordChangedAt).toBe(1200);
   });
 });

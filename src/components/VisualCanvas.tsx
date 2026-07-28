@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { getPalette } from "../presets/palettes";
+import { calculateVisualVoices } from "../music/envelopes";
 import type {
   HeldNote,
   MusicalState,
@@ -148,7 +149,13 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
       document.addEventListener("visibilitychange", onVisibility);
       document.addEventListener("fullscreenchange", onFullscreen);
 
-      const emitMetrics = (time: number, fps: number, calm: boolean) => {
+      const emitMetrics = (
+        time: number,
+        fps: number,
+        calm: boolean,
+        musicState: MusicalState,
+        dynamics: VisualDynamics,
+      ) => {
         const currentParams = paramsRef.current;
         if (currentParams.quality === "auto" && !calm) {
           if (fps < 47) {
@@ -181,6 +188,13 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
             currentParams.quality === "auto"
               ? `Auto ${Math.round(qualityScale * 100)}%`
               : `${currentParams.quality[0].toUpperCase()}${currentParams.quality.slice(1)}`,
+          heldNotes: musicState.notes.length,
+          chordRoot: musicState.chord.root,
+          chordQuality: musicState.chord.quality,
+          attackEnergy: dynamics.attack,
+          heldEnergy: dynamics.held,
+          releaseEnergy: dynamics.release,
+          sustainEnergy: dynamics.sustain,
         });
         lastMetricsAt = time;
         metricsStartedAt = time;
@@ -193,6 +207,7 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
 
         const currentParams = paramsRef.current;
         const currentMusic = musicRef.current;
+        const voices = calculateVisualVoices(currentMusic.noteLifecycles, time);
         const lastAttackAge = currentMusic.lastAttack
           ? Math.max(0, time - currentMusic.lastAttack.timestamp)
           : Number.POSITIVE_INFINITY;
@@ -205,11 +220,30 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           0,
           1,
         );
-        const liveRelease =
-          currentMusic.lastReleaseAt > 0
-            ? currentMusic.releaseEnergy *
-              Math.exp(-Math.max(0, time - currentMusic.lastReleaseAt) / 680)
-            : 0;
+        const liveAttack = clamp(
+          voices.reduce((sum, voice) => sum + voice.attack, 0) /
+            Math.max(1, Math.sqrt(voices.length)),
+          0,
+          1,
+        );
+        const liveHeld = clamp(
+          voices.reduce((sum, voice) => sum + voice.hold, 0) /
+            Math.max(1, Math.sqrt(voices.length)),
+          0,
+          1,
+        );
+        const liveRelease = clamp(
+          voices.reduce((sum, voice) => sum + voice.release, 0) /
+            Math.max(1, Math.sqrt(voices.length)),
+          0,
+          1,
+        );
+        const liveSustain = clamp(
+          voices.reduce((sum, voice) => sum + voice.sustain, 0) /
+            Math.max(1, Math.sqrt(voices.length)),
+          0,
+          1,
+        );
         const liveVelocity =
           (currentMusic.rollingAverageVelocity / 127) *
           (currentMusic.notes.length > 0 ? 1 : Math.exp(-lastAttackAge / 2600));
@@ -218,7 +252,7 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           modeTransition = 1;
         }
         const calm =
-          currentMusic.notes.length === 0 &&
+          voices.every((voice) => voice.energy < 0.025) &&
           attackEnvelope < 0.025 &&
           liveRhythm < 0.035;
         const activeFrameInterval =
@@ -271,18 +305,17 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           lastSequence.current = currentMusic.sequence;
         }
 
-        attackEnvelope *= Math.exp(-delta / 260);
+        attackEnvelope = Math.max(
+          liveAttack,
+          attackEnvelope * Math.exp(-delta / 260),
+        );
         const responseRate =
           (0.003 + currentParams.responsiveness * 0.00012) *
           (currentParams.reducedMotion ? 0.45 : 1);
         const smooth = 1 - Math.exp(-delta * responseRate);
-        heldEnvelope = lerp(heldEnvelope, currentMusic.heldEnergy, smooth);
+        heldEnvelope = lerp(heldEnvelope, liveHeld, smooth);
         releaseEnvelope = lerp(releaseEnvelope, liveRelease, smooth * 0.7);
-        sustainEnvelope = lerp(
-          sustainEnvelope,
-          currentMusic.sustainEnergy,
-          smooth * 0.6,
-        );
+        sustainEnvelope = lerp(sustainEnvelope, liveSustain, smooth * 0.6);
         rhythmEnvelope = lerp(rhythmEnvelope, liveRhythm, smooth);
         velocityEnvelope = lerp(velocityEnvelope, liveVelocity, smooth * 0.8);
         const chordStability = clamp(
@@ -342,12 +375,13 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           background: palette.background,
           qualityScale,
           dynamics,
+          voices,
         });
 
         if (time - lastMetricsAt > 800) {
           const fps =
             (frameCounter * 1000) / Math.max(1, time - metricsStartedAt);
-          emitMetrics(time, fps, calm);
+          emitMetrics(time, fps, calm, currentMusic, dynamics);
         }
       };
 

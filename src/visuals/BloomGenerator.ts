@@ -20,6 +20,7 @@ import {
   pitchPosition,
   registerPosition,
   velocityCurve,
+  voiceComposition,
 } from "./musicMapping";
 
 interface BloomImpulse {
@@ -85,11 +86,17 @@ export class BloomGenerator implements VisualGenerator {
   render(context: CanvasRenderingContext2D, frame: VisualFrame): void {
     const { width, height, time, delta, music, params, dynamics } = frame;
     const latestNote = music.lastAttack?.note ?? music.notes[0]?.note ?? 60;
-    const register = registerPosition(latestNote);
+    const tonalCenter = music.chord.root ?? latestNote;
+    const composition = voiceComposition(frame.voices);
+    const register =
+      composition.count > 0
+        ? composition.register
+        : registerPosition(latestNote);
     const profile = harmonyProfile(music.chord.quality);
     const motionScale = params.reducedMotion ? 0.34 : 1;
     const autoDrift = params.autoMotion ? 1 : 0.18;
-    const pitchDrift = pitchPosition(latestNote);
+    const pitchDrift =
+      composition.count > 0 ? composition.pitch : pitchPosition(latestNote);
     const cx =
       width *
       (0.5 +
@@ -111,17 +118,21 @@ export class BloomGenerator implements VisualGenerator {
     const breath =
       1 +
       Math.sin(this.organismPhase * Math.PI * 2) *
-        (0.035 + dynamics.held * 0.045 + dynamics.sustain * 0.025);
+        (0.035 +
+          dynamics.held * 0.045 +
+          dynamics.sustain * 0.025 +
+          profile.float * 0.018);
     const registerScale = 1.18 - register * 0.22;
     const baseRadius =
       Math.min(width, height) *
       (0.115 + params.bloom / 820) *
       registerScale *
       breath *
-      (1 + this.pulse * 0.2);
+      (1 + this.pulse * 0.2) *
+      (0.88 + profile.stretch * 0.12);
     const intensity = Math.max(0.16 + params.idle / 440, dynamics.intensity);
 
-    this.drawAura(context, frame, cx, cy, baseRadius, latestNote, intensity);
+    this.drawAura(context, frame, cx, cy, baseRadius, tonalCenter, intensity);
 
     context.save();
     context.translate(cx, cy);
@@ -156,11 +167,7 @@ export class BloomGenerator implements VisualGenerator {
         layer * 0.27 +
         Math.sin(time * 0.00018 + layer * 1.4) *
           (0.035 + profile.float * 0.035);
-      const color = noteColor(
-        frame,
-        (music.chord.root ?? latestNote) + layer * 1.37,
-        depth * 0.08,
-      );
+      const color = noteColor(frame, tonalCenter + layer * 1.37, depth * 0.08);
       const alpha =
         (0.1 + intensity * 0.22) *
         (0.55 + (1 - depth) * 0.45) *
@@ -178,21 +185,16 @@ export class BloomGenerator implements VisualGenerator {
       );
     }
 
+    this.drawVoices(context, frame, baseRadius, profile);
     this.drawFilaments(
       context,
       frame,
       baseRadius,
       petals,
-      latestNote,
+      tonalCenter,
       intensity,
     );
-    this.drawHarmonyHalos(
-      context,
-      frame,
-      baseRadius,
-      latestNote,
-      profile.layerBonus,
-    );
+    this.drawHarmonyHalos(context, frame, baseRadius, tonalCenter, profile);
     context.restore();
 
     this.drawAttacks(context, frame, cx, cy);
@@ -252,12 +254,13 @@ export class BloomGenerator implements VisualGenerator {
     profile: ReturnType<typeof harmonyProfile>,
   ): void {
     const { time, dynamics, params } = frame;
-    const inward = 1 - profile.inward * 0.16;
+    const inward = 1 - profile.inward * 0.22;
     for (let petal = 0; petal < petalCount; petal += 1) {
       const baseAngle =
         (petal / petalCount) * Math.PI * 2 +
         rotation +
-        Math.sin(petal * 2.17 + layer * 1.31) * 0.018;
+        Math.sin(petal * 2.17 + layer * 1.31) * 0.018 +
+        Math.sin(time * 0.0022 + petal * 4.1) * profile.instability * 0.038;
       const irregularity =
         organicWave(baseAngle, time, petal + layer * 7) *
         (0.035 + profile.warp * 0.095);
@@ -270,19 +273,24 @@ export class BloomGenerator implements VisualGenerator {
         radius *
         (0.9 + irregularity + dynamics.attack * 0.08) *
         crystallineStretch *
+        (0.84 + profile.stretch * 0.16) *
         inward;
       const halfWidth =
         (Math.PI / petalCount) *
-        (0.48 + profile.openness * 0.21 - profile.inward * 0.08);
+        (0.4 +
+          profile.openness * 0.23 -
+          profile.inward * 0.09 +
+          profile.closure * 0.05);
       const rootRadius = radius * (0.12 + layer * 0.008);
       const curl =
         Math.sin(time * 0.00053 + petal * 1.9 + layer) *
-        (0.06 + profile.float * 0.09);
+        (0.045 + profile.float * 0.09 + profile.curvature * 0.1);
+      const directionalBend = profile.directionalPull * (0.035 + layer * 0.004);
       const startX = Math.cos(baseAngle) * rootRadius;
       const startY = Math.sin(baseAngle) * rootRadius;
-      const tipX = Math.cos(baseAngle + curl) * length;
+      const tipX = Math.cos(baseAngle + curl + directionalBend) * length;
       const tipY =
-        Math.sin(baseAngle + curl) *
+        Math.sin(baseAngle + curl + directionalBend) *
         length *
         (0.9 + frame.music.averageRegister * 0.12);
       const leftAngle = baseAngle - halfWidth;
@@ -333,6 +341,96 @@ export class BloomGenerator implements VisualGenerator {
         context.lineWidth = 0.45;
         context.stroke();
       }
+    }
+  }
+
+  private drawVoices(
+    context: CanvasRenderingContext2D,
+    frame: VisualFrame,
+    radius: number,
+    profile: ReturnType<typeof harmonyProfile>,
+  ): void {
+    const voices = frame.voices
+      .filter((voice) => voice.energy > 0.035)
+      .slice(-9);
+    const root = frame.music.chord.root ?? frame.music.notes[0]?.note ?? 60;
+    const inversionTurn = (frame.music.chord.inversion ?? 0) * 0.08;
+    for (const voice of voices) {
+      const interval = (voice.note - root + 120) % 12;
+      const angle =
+        (interval / 12) * Math.PI * 2 -
+        Math.PI / 2 +
+        inversionTurn +
+        Math.sin(frame.time * 0.00022 + voice.note) * profile.float * 0.06;
+      const register = registerPosition(voice.note);
+      const orbit =
+        radius *
+        (0.28 + register * 0.62 + profile.openness * 0.08 + voice.hold * 0.08);
+      const x = Math.cos(angle) * orbit;
+      const y = Math.sin(angle) * orbit * (0.78 + profile.inward * 0.12);
+      const color = noteColor(frame, voice.note);
+      const size =
+        radius *
+        (0.07 +
+          voice.energy * 0.11 +
+          voice.attack * 0.1 +
+          Math.min(0.08, voice.heldDuration / 24000));
+
+      context.save();
+      context.translate(x, y);
+      context.rotate(
+        angle +
+          Math.PI / 2 +
+          profile.directionalPull * 0.28 +
+          Math.sin(frame.time * 0.0017 + voice.note) *
+            profile.instability *
+            0.12,
+      );
+      context.beginPath();
+      context.moveTo(0, -size * 0.25);
+      context.bezierCurveTo(
+        size * (0.5 + profile.curvature * 0.18),
+        -size * 0.8,
+        size * (0.58 + profile.openness * 0.15),
+        size * 0.65,
+        0,
+        size * (1 + profile.stretch * 0.24),
+      );
+      context.bezierCurveTo(
+        -size * (0.58 + profile.openness * 0.15),
+        size * 0.65,
+        -size * (0.5 + profile.curvature * 0.18),
+        -size * 0.8,
+        0,
+        -size * 0.25,
+      );
+      context.strokeStyle = rgba(color, 0.16 + voice.energy * 0.38);
+      context.fillStyle = rgba(color, 0.025 + voice.hold * 0.07);
+      context.shadowColor = color;
+      context.shadowBlur = 5 + frame.params.glow * 0.09 + voice.attack * 14;
+      context.lineWidth = 0.7 + velocityCurve(voice.velocity) * 1.2;
+      context.fill();
+      context.stroke();
+
+      if (voice.phase === "sustain" || voice.phase === "release") {
+        context.setLineDash(voice.phase === "sustain" ? [3, 5] : [2, 8]);
+        context.beginPath();
+        context.arc(
+          0,
+          0,
+          size * (1.2 + voice.sustain * 0.5 + voice.release * 0.35),
+          0,
+          Math.PI * 2,
+        );
+        context.strokeStyle = rgba(
+          color,
+          0.08 + voice.sustain * 0.22 + voice.release * 0.16,
+        );
+        context.lineWidth = 0.6;
+        context.stroke();
+        context.setLineDash([]);
+      }
+      context.restore();
     }
   }
 
@@ -389,9 +487,13 @@ export class BloomGenerator implements VisualGenerator {
     frame: VisualFrame,
     radius: number,
     note: number,
-    layerBonus: number,
+    profile: ReturnType<typeof harmonyProfile>,
   ): void {
-    for (let halo = 0; halo < layerBonus; halo += 1) {
+    const haloCount = Math.max(
+      profile.layerBonus,
+      Math.round(profile.halo * 2),
+    );
+    for (let halo = 0; halo < haloCount; halo += 1) {
       const haloRadius =
         radius *
         (1.16 + halo * 0.19 + Math.sin(frame.time * 0.0004 + halo) * 0.025);
@@ -406,7 +508,7 @@ export class BloomGenerator implements VisualGenerator {
         context,
         noteColor(frame, note + halo * 3.5),
         7 + frame.params.glow * 0.08,
-        0.14 + frame.dynamics.held * 0.1,
+        0.08 + profile.halo * 0.12 + frame.dynamics.held * 0.1,
       );
       context.lineWidth = 0.75;
       context.stroke();

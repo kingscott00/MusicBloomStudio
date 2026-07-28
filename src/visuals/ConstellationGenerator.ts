@@ -91,6 +91,7 @@ export class ConstellationGenerator implements VisualGenerator {
   }
 
   render(context: CanvasRenderingContext2D, frame: VisualFrame): void {
+    this.syncHeldVoices(frame);
     if (!this.stars.length) this.seedIdleStars();
     if (frame.music.chord.label !== this.lastChord) {
       this.lastChord = frame.music.chord.label;
@@ -119,6 +120,25 @@ export class ConstellationGenerator implements VisualGenerator {
         );
       star.x = lerp(star.x, star.targetX, settle);
       star.y = lerp(star.y, star.targetY, settle);
+      const voice = frame.voices.find(
+        (candidate) => candidate.note === star.note,
+      );
+      if (!star.idle && voice) {
+        if (voice.phase === "release") {
+          star.strength = lerp(
+            star.strength,
+            0.08 + voice.release * 0.72,
+            1 - Math.exp(-frame.delta * 0.003),
+          );
+        } else {
+          const depth = Math.min(0.36, voice.heldDuration / 7000);
+          star.strength = lerp(
+            star.strength,
+            0.5 + voice.energy * 0.85 + depth,
+            1 - Math.exp(-frame.delta * 0.002),
+          );
+        }
+      }
       const parallax = 0.6 + registerPosition(star.note) * 0.7;
       return {
         star,
@@ -143,6 +163,31 @@ export class ConstellationGenerator implements VisualGenerator {
     context.restore();
   }
 
+  private syncHeldVoices(frame: VisualFrame): void {
+    for (const voice of frame.voices) {
+      if (
+        voice.phase === "release" ||
+        this.stars.some((star) => star.note === voice.note && !star.idle)
+      )
+        continue;
+      const seed = voice.note * 17.13 + voice.heldDuration * 0.001;
+      const target = this.positionFor(voice.note, seed);
+      this.stars.push({
+        note: voice.note,
+        x: target.x,
+        y: target.y,
+        targetX: target.x,
+        targetY: target.y,
+        strength: 0.5 + voice.energy * 0.9,
+        pulse: 0,
+        seed,
+        repetitions: 1,
+        idle: false,
+      });
+    }
+    this.stars = this.stars.slice(-42);
+  }
+
   private drawConnections(
     context: CanvasRenderingContext2D,
     frame: VisualFrame,
@@ -151,7 +196,11 @@ export class ConstellationGenerator implements VisualGenerator {
   ): void {
     const maxStars = qualityCount(frame, positions.length, 8);
     const maxDistance =
-      Math.min(frame.width, frame.height) * (0.19 + frame.params.density / 640);
+      Math.min(frame.width, frame.height) *
+      (0.16 +
+        frame.params.density / 680 +
+        profile.openness * 0.035 -
+        profile.inward * 0.018);
     for (let i = 0; i < maxStars; i += 1) {
       for (let j = i + 1; j < maxStars; j += 1) {
         const a = positions[i];
@@ -179,7 +228,8 @@ export class ConstellationGenerator implements VisualGenerator {
             (consonant ? 0.025 : 0));
         const curve =
           Math.sin(frame.time * 0.00032 + a.star.seed * 0.1 + b.star.seed) *
-          (3 + profile.warp * 26);
+            (3 + profile.warp * 26 + profile.curvature * 10) +
+          profile.directionalPull * distance * 0.12;
         context.beginPath();
         context.moveTo(a.x, a.y);
         context.quadraticCurveTo(
@@ -209,10 +259,8 @@ export class ConstellationGenerator implements VisualGenerator {
   ): void {
     for (const { star, x, y } of positions) {
       star.pulse *= Math.exp(-frame.delta / 300);
-      if (!star.idle)
-        star.strength *= frame.music.sustain
-          ? Math.exp(-frame.delta / 40000)
-          : Math.exp(-frame.delta / 18000);
+      if (!star.idle && !frame.voices.some((voice) => voice.note === star.note))
+        star.strength *= Math.exp(-frame.delta / 2400);
       const force = clamp(star.strength, 0.08, 2);
       const twinkle =
         0.86 +
@@ -297,19 +345,35 @@ export class ConstellationGenerator implements VisualGenerator {
 
   private retargetStars(frame: VisualFrame): void {
     const root = frame.music.chord.root ?? 0;
+    const profile = harmonyProfile(frame.music.chord.quality);
+    const inversionTurn = (frame.music.chord.inversion ?? 0) * 0.14;
     for (const star of this.stars) {
       const shift = ((star.note - root + 12) % 12) / 12;
       const base = this.positionFor(
         star.note,
         star.seed + root * 11.3 + frame.music.sequence,
       );
+      const angle = shift * Math.PI * 2 + inversionTurn;
+      const spread = 0.045 + profile.openness * 0.045 + profile.stretch * 0.025;
+      const instability =
+        Math.sin(star.note * 4.7 + frame.music.sequence) *
+        profile.instability *
+        0.055;
       star.targetX = clamp(
-        base.x + Math.sin(shift * Math.PI * 2) * 0.06,
+        0.5 +
+          (base.x - 0.5) * (0.72 + profile.stretch * 0.34) +
+          Math.sin(angle) * spread +
+          instability +
+          profile.directionalPull * shift * 0.04,
         0.08,
         0.92,
       );
       star.targetY = clamp(
-        base.y + Math.cos(shift * Math.PI * 2) * 0.045,
+        0.5 +
+          (base.y - 0.5) * (0.7 + profile.openness * 0.22) +
+          Math.cos(angle) * spread * (0.72 + profile.inward * 0.3) +
+          Math.sin(angle * 2) * profile.curvature * 0.035 -
+          profile.float * 0.025,
         0.08,
         0.92,
       );

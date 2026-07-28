@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { pitchClassName } from "../music/notes";
 import { palettes } from "../presets/palettes";
 import type {
   RenderMetrics,
@@ -49,6 +51,7 @@ export function VisualControls({
   diagnosticsOpen,
   onDiagnosticsChange,
 }: VisualControlsProps) {
+  const [performanceOpen, setPerformanceOpen] = useState(true);
   return (
     <section
       className="controls-card glass-card"
@@ -90,22 +93,81 @@ export function VisualControls({
           ))}
         </select>
       </label>
-      <label className="field-label">
-        Rendering quality
-        <select
-          value={params.quality}
-          onChange={(event) =>
-            onChange({
-              quality: event.target.value as RenderQuality,
-            })
-          }
+      <div className="performance-diagnostics">
+        <button
+          className="performance-diagnostics-heading"
+          onClick={() => setPerformanceOpen((open) => !open)}
+          aria-expanded={performanceOpen}
         >
-          <option value="auto">Adaptive · recommended</option>
-          <option value="high">High fidelity</option>
-          <option value="balanced">Balanced</option>
-          <option value="low">Cool & efficient</option>
-        </select>
-      </label>
+          <span>Performance &amp; Diagnostics</span>
+          <span>{performanceOpen ? "Collapse" : "Expand"}</span>
+        </button>
+        {performanceOpen && (
+          <div className="performance-diagnostics-body">
+            <label className="field-label">
+              Rendering quality
+              <select
+                value={params.quality}
+                onChange={(event) =>
+                  onChange({
+                    quality: event.target.value as RenderQuality,
+                  })
+                }
+              >
+                <option value="auto">Auto · adaptive</option>
+                <option value="high">High</option>
+                <option value="balanced">Balanced</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
+            <Toggle
+              label="Performance Monitor"
+              checked={diagnosticsOpen}
+              onChange={onDiagnosticsChange}
+            />
+            {diagnosticsOpen && (
+              <div className="metrics-grid" aria-live="polite">
+                <Metric label="FPS" value={String(metrics.fps)} />
+                <Metric
+                  label="Effective quality"
+                  value={metrics.qualityLabel}
+                />
+                <Metric
+                  label="Render scale"
+                  value={`${Math.round(metrics.qualityScale * 100)}%`}
+                />
+                <Metric
+                  label="Active elements"
+                  value={String(metrics.activeElements)}
+                />
+                <Metric label="Held notes" value={String(metrics.heldNotes)} />
+                <Metric
+                  label="Chord root"
+                  value={
+                    metrics.chordRoot === null
+                      ? "—"
+                      : pitchClassName(metrics.chordRoot)
+                  }
+                />
+                <Metric label="Chord quality" value={metrics.chordQuality} />
+                <Metric
+                  label="Attack"
+                  value={metrics.attackEnergy.toFixed(2)}
+                />
+                <Metric label="Held" value={metrics.heldEnergy.toFixed(2)} />
+                <Metric
+                  label="Release"
+                  value={metrics.releaseEnergy.toFixed(2)}
+                />
+                <Metric
+                  label="Sustain"
+                  value={metrics.sustainEnergy.toFixed(2)}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <div className="control-sliders">
         {sliders.map(({ key, label, min = 0, max = 100 }) => (
           <label className="range-control" key={key}>
@@ -136,27 +198,6 @@ export function VisualControls({
           checked={params.reducedMotion}
           onChange={(checked) => onChange({ reducedMotion: checked })}
         />
-      </div>
-      <div className="diagnostics">
-        <button
-          className="diagnostics-toggle"
-          onClick={() => onDiagnosticsChange(!diagnosticsOpen)}
-          aria-expanded={diagnosticsOpen}
-        >
-          <span>Performance monitor</span>
-          <span>{diagnosticsOpen ? "Hide" : "Show"}</span>
-        </button>
-        {diagnosticsOpen && (
-          <div className="metrics-grid" aria-live="polite">
-            <Metric label="FPS" value={String(metrics.fps)} />
-            <Metric label="Elements" value={String(metrics.activeElements)} />
-            <Metric label="Quality" value={metrics.qualityLabel} />
-            <Metric
-              label="Scale"
-              value={`${Math.round(metrics.qualityScale * 100)}%`}
-            />
-          </div>
-        )}
       </div>
     </section>
   );
