@@ -18,7 +18,12 @@ export function usePerformance(preferFlats: boolean) {
 
   const sendEvent = useCallback((event: NoteEvent) => {
     if (event.type === "noteon" && event.velocity > 0)
-      analyzer.current.registerOnset(event.note, event.timestamp);
+      analyzer.current.registerOnset(
+        event.note,
+        event.velocity,
+        event.timestamp,
+      );
+    else analyzer.current.registerRelease(event.note, event.timestamp);
     setHeldState((state) => applyNoteEvent(state, event));
   }, []);
 
@@ -55,7 +60,10 @@ export function usePerformance(preferFlats: boolean) {
       setHeldState((state) => releaseSource(state, source)),
     [],
   );
-  const clearAll = useCallback(() => setHeldState(createHeldNoteState()), []);
+  const clearAll = useCallback(() => {
+    analyzer.current.reset();
+    setHeldState(createHeldNoteState());
+  }, []);
 
   const notes = useMemo(
     () => [...heldState.notes.values()].sort((a, b) => a.note - b.note),

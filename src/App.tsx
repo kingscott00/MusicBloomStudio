@@ -18,7 +18,7 @@ import {
   loadCustomPresets,
   saveCustomPresets,
 } from "./presets/presets";
-import type { Preset, VisualParameters } from "./types";
+import type { Preset, RenderMetrics, VisualParameters } from "./types";
 
 const SETTINGS_KEY = "music-bloom-settings-v1";
 
@@ -54,6 +54,13 @@ export default function App() {
   const [cleanView, setCleanView] = useState(false);
   const [customPresets, setCustomPresets] = useState(loadCustomPresets);
   const [activePreset, setActivePreset] = useState("moonlit-bloom");
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [renderMetrics, setRenderMetrics] = useState<RenderMetrics>({
+    fps: 0,
+    activeElements: 0,
+    qualityScale: 0.86,
+    qualityLabel: "Auto 86%",
+  });
   const canvasRef = useRef<VisualCanvasHandle>(null);
   const stageRef = useRef<HTMLElement>(null);
   const performance = usePerformance(preferFlats);
@@ -156,6 +163,7 @@ export default function App() {
           ref={canvasRef}
           music={performance.music}
           params={params}
+          onMetrics={diagnosticsOpen ? setRenderMetrics : undefined}
         />
         <div className="canvas-vignette" aria-hidden="true" />
 
@@ -247,6 +255,9 @@ export default function App() {
               params={params}
               onChange={updateParams}
               onReset={resetVisuals}
+              metrics={renderMetrics}
+              diagnosticsOpen={diagnosticsOpen}
+              onDiagnosticsChange={setDiagnosticsOpen}
             />
           )}
         </aside>

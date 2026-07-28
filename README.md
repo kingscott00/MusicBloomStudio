@@ -61,6 +61,11 @@ The row maps chromatically from C4 through C5.
 - Sustain extends note state and slows visual decay.
 - Quiet and idle states retain a subtle breathing form.
 
+The renderer uses explicit attack, held-note, release, sustain, rhythmic,
+velocity, and chord-stability envelopes. Note attacks are delivered to the
+active generator independently from the sorted held-note collection, so short
+notes and downward melodic motion remain visually immediate.
+
 Chord detection includes major, minor, diminished, augmented, suspended, sixth, seventh, ninth, added ninth, and power chords, including inversions where the pitch collection is unambiguous.
 
 ## Browser support
@@ -82,6 +87,19 @@ src/
 ```
 
 The animation loop and generator state live outside React rendering. React updates only when musical or interface state changes. Canvas sizing is handled with `ResizeObserver`, pixel density is capped, hidden tabs stop drawing, and all MIDI and animation listeners are cleaned up.
+
+Adaptive quality is enabled by default. It tunes effective pixel density and
+generator detail when active-frame performance falls, caps fullscreen
+resolution more conservatively, and reduces calm idle scenes to approximately
+30 FPS (18 FPS with reduced motion). Per-particle radial gradients were replaced
+with cheaper layered light primitives, and every generator has a bounded
+population. Quality-aware active caps (120/90/60 FPS) also prevent high-refresh
+displays from doing unnecessary canvas work. The optional Performance Monitor
+in Visual Controls reports FPS, active elements, and the current quality scale.
+
+The visual system follows the project’s
+[Harmonic Bioluminescence](docs/ALGORITHMIC_PHILOSOPHY.md) generative-art
+philosophy.
 
 ## Capture and comfort
 

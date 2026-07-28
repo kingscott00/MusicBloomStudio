@@ -1,11 +1,19 @@
 import { palettes } from "../presets/palettes";
-import type { VisualMode, VisualParameters } from "../types";
+import type {
+  RenderMetrics,
+  RenderQuality,
+  VisualMode,
+  VisualParameters,
+} from "../types";
 import { Icon } from "./Icon";
 
 interface VisualControlsProps {
   params: VisualParameters;
   onChange: (changes: Partial<VisualParameters>) => void;
   onReset: () => void;
+  metrics: RenderMetrics;
+  diagnosticsOpen: boolean;
+  onDiagnosticsChange: (open: boolean) => void;
 }
 
 const modes: Array<{ id: VisualMode; label: string; description: string }> = [
@@ -37,6 +45,9 @@ export function VisualControls({
   params,
   onChange,
   onReset,
+  metrics,
+  diagnosticsOpen,
+  onDiagnosticsChange,
 }: VisualControlsProps) {
   return (
     <section
@@ -79,6 +90,22 @@ export function VisualControls({
           ))}
         </select>
       </label>
+      <label className="field-label">
+        Rendering quality
+        <select
+          value={params.quality}
+          onChange={(event) =>
+            onChange({
+              quality: event.target.value as RenderQuality,
+            })
+          }
+        >
+          <option value="auto">Adaptive · recommended</option>
+          <option value="high">High fidelity</option>
+          <option value="balanced">Balanced</option>
+          <option value="low">Cool & efficient</option>
+        </select>
+      </label>
       <div className="control-sliders">
         {sliders.map(({ key, label, min = 0, max = 100 }) => (
           <label className="range-control" key={key}>
@@ -110,7 +137,37 @@ export function VisualControls({
           onChange={(checked) => onChange({ reducedMotion: checked })}
         />
       </div>
+      <div className="diagnostics">
+        <button
+          className="diagnostics-toggle"
+          onClick={() => onDiagnosticsChange(!diagnosticsOpen)}
+          aria-expanded={diagnosticsOpen}
+        >
+          <span>Performance monitor</span>
+          <span>{diagnosticsOpen ? "Hide" : "Show"}</span>
+        </button>
+        {diagnosticsOpen && (
+          <div className="metrics-grid" aria-live="polite">
+            <Metric label="FPS" value={String(metrics.fps)} />
+            <Metric label="Elements" value={String(metrics.activeElements)} />
+            <Metric label="Quality" value={metrics.qualityLabel} />
+            <Metric
+              label="Scale"
+              value={`${Math.round(metrics.qualityScale * 100)}%`}
+            />
+          </div>
+        )}
+      </div>
     </section>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="metric">
+      <small>{label}</small>
+      <b>{value}</b>
+    </span>
   );
 }
 

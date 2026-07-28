@@ -18,6 +18,13 @@ export interface HeldNote {
   sustained: boolean;
 }
 
+export interface MusicalNoteImpulse {
+  sequence: number;
+  note: number;
+  velocity: number;
+  timestamp: number;
+}
+
 export type ChordQuality =
   | "major"
   | "minor"
@@ -51,6 +58,7 @@ export interface MusicalState {
   chord: DetectedChord;
   sustain: boolean;
   averageVelocity: number;
+  rollingAverageVelocity: number;
   noteDensity: number;
   rhythmicActivity: number;
   averageRegister: number;
@@ -58,11 +66,21 @@ export interface MusicalState {
   lastInterval: number;
   timeBetweenNotes: number;
   energy: number;
+  attackImpulse: number;
+  heldEnergy: number;
+  releaseEnergy: number;
+  lastReleaseAt: number;
+  sustainEnergy: number;
+  chordStability: number;
+  chordChangedAt: number;
   sequence: number;
   lastNote: number | null;
+  lastAttack: MusicalNoteImpulse | null;
+  recentNotes: MusicalNoteImpulse[];
 }
 
 export type VisualMode = "bloom" | "orbit" | "ribbons" | "constellation";
+export type RenderQuality = "auto" | "high" | "balanced" | "low";
 
 export interface VisualParameters {
   mode: VisualMode;
@@ -79,6 +97,25 @@ export interface VisualParameters {
   autoMotion: boolean;
   idle: number;
   reducedMotion: boolean;
+  quality: RenderQuality;
+}
+
+export interface VisualDynamics {
+  attack: number;
+  held: number;
+  release: number;
+  sustain: number;
+  rhythm: number;
+  velocity: number;
+  intensity: number;
+  chordStability: number;
+}
+
+export interface RenderMetrics {
+  fps: number;
+  activeElements: number;
+  qualityScale: number;
+  qualityLabel: string;
 }
 
 export interface ColorPalette {
@@ -115,6 +152,7 @@ export interface VisualGenerator {
   render(context: CanvasRenderingContext2D, frame: VisualFrame): void;
   noteTriggered(note: HeldNote, state: MusicalState): void;
   reset(width: number, height: number): void;
+  getActiveCount(): number;
 }
 
 export interface VisualFrame {
@@ -126,4 +164,6 @@ export interface VisualFrame {
   music: MusicalState;
   colors: string[];
   background: string;
+  qualityScale: number;
+  dynamics: VisualDynamics;
 }

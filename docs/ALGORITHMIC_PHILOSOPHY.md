@@ -1,0 +1,11 @@
+# Harmonic Bioluminescence
+
+Harmonic Bioluminescence treats a performance as a living field rather than a stream of commands. Notes do not merely spawn objects: each attack deposits energy into a responsive organism, each held tone sustains a pressure field, and each release leaves a fading memory. Beauty emerges from the interaction of these envelopes over time, so the same chord can breathe differently depending on how it was approached and played.
+
+Pitch is expressed spatially and chromatically through related, never random, families. Register establishes depth and altitude; pitch class selects a place in a carefully interpolated palette; melodic direction bends the composition’s current. Controlled asymmetry keeps the forms organic. Trigonometric deformation and deterministic pseudo-noise introduce irregularity, but every disturbance remains constrained by the musical structure.
+
+Harmony changes the physical laws of the scene. Major sonorities open and radiate, minor sonorities fold inward, suspended harmony floats, diminished harmony warps, and augmented harmony stretches toward crystalline instability. Extensions create secondary halos and satellite structures. These are not decorative labels but force coefficients in a meticulously crafted algorithm whose visual grammar remains legible across every mode.
+
+Particles are accents, not fog. Their paths reveal invisible forces: elastic attraction, orbital gravity, melodic flow, and constellation memory. Layered strokes, restrained additive light, and depth-scaled opacity create luminosity without washing out the palette. Each mode uses its own motion language while sharing the same master-level musical envelope system.
+
+The system is designed as an instrument, so responsiveness and restraint are equally important. Attacks become visible within the next rendered frame, quiet playing remains beautiful, and rhythmic density increases complexity without runaway emission. Adaptive resolution, bounded populations, and calm-state frame throttling are part of the aesthetic craftsmanship: painstaking optimization preserves both smoothness and thermal comfort while the algorithm continues to feel alive.

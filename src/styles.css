@@ -559,6 +559,67 @@ select,
   margin-bottom: 12px;
 }
 
+.diagnostics {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.diagnostics-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 3px 0;
+  border: 0;
+  color: #929db0;
+  background: transparent;
+  font-size: 9px;
+}
+
+.diagnostics-toggle span:last-child {
+  color: #758197;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.metric small {
+  overflow: hidden;
+  color: #707b8f;
+  font-size: 6px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.metric b {
+  overflow: hidden;
+  color: #cbd4e3;
+  font-size: 9px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .control-sliders {
   display: grid;
   grid-template-columns: 1fr 1fr;

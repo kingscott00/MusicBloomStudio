@@ -49,7 +49,11 @@ export function limitParticles<T extends { life: number }>(
   frame: VisualFrame,
   multiplier = 1,
 ): T[] {
-  const cap = Math.round((80 + frame.params.density * 3.2) * multiplier);
+  const cap = Math.round(
+    (60 + frame.params.density * 2.7) *
+      multiplier *
+      (0.55 + frame.qualityScale * 0.45),
+  );
   return particles.filter((particle) => particle.life > 0).slice(-cap);
 }
 
@@ -69,17 +73,28 @@ export function drawSoftPoint(
   color: string,
   alpha: number,
 ): void {
-  const gradient = context.createRadialGradient(
-    x,
-    y,
-    0,
-    x,
-    y,
-    Math.max(1, radius * 2.8),
-  );
-  gradient.addColorStop(0, rgba(color, clamp(alpha, 0, 1)));
-  gradient.addColorStop(0.22, rgba(color, alpha * 0.45));
-  gradient.addColorStop(1, rgba(color, 0));
-  context.fillStyle = gradient;
-  context.fillRect(x - radius * 3, y - radius * 3, radius * 6, radius * 6);
+  const safeRadius = Math.max(0.5, radius);
+  context.shadowColor = color;
+  context.shadowBlur = safeRadius * 2.4;
+  context.fillStyle = rgba(color, clamp(alpha * 0.32, 0, 1));
+  context.beginPath();
+  context.arc(x, y, safeRadius * 1.85, 0, Math.PI * 2);
+  context.fill();
+  context.shadowBlur = safeRadius * 1.25;
+  context.fillStyle = rgba(color, clamp(alpha, 0, 1));
+  context.beginPath();
+  context.arc(x, y, safeRadius * 0.58, 0, Math.PI * 2);
+  context.fill();
+}
+
+export function qualityCount(
+  frame: VisualFrame,
+  desired: number,
+  minimum: number,
+): number {
+  return Math.max(minimum, Math.round(desired * frame.qualityScale));
+}
+
+export function expSmoothing(delta: number, speed: number): number {
+  return 1 - Math.exp(-delta * speed);
 }

@@ -15,6 +15,7 @@ export const defaultParams: VisualParameters = {
   autoMotion: true,
   idle: 34,
   reducedMotion: false,
+  quality: "auto",
 };
 
 const preset = (
@@ -105,7 +106,11 @@ export function loadCustomPresets(): Preset[] {
       localStorage.getItem(STORAGE_KEY) ?? "[]",
     ) as unknown;
     if (!Array.isArray(stored)) return [];
-    return stored.filter(isPreset).map((item) => ({ ...item, builtIn: false }));
+    return stored.filter(isPreset).map((item) => ({
+      ...item,
+      builtIn: false,
+      params: { ...defaultParams, ...item.params },
+    }));
   } catch {
     return [];
   }

@@ -5,112 +5,225 @@ import type {
   VisualGenerator,
 } from "../types";
 import { rgba } from "../utils/color";
-import { clamp, hashNoise } from "../utils/math";
-import { drawSoftPoint, noteColor } from "./helpers";
+import { clamp, hashNoise, lerp } from "../utils/math";
+import { drawSoftPoint, noteColor, qualityCount } from "./helpers";
+import {
+  harmonyProfile,
+  registerPosition,
+  velocityCurve,
+} from "./musicMapping";
 
 interface Star {
   note: number;
   x: number;
   y: number;
+  targetX: number;
+  targetY: number;
   strength: number;
   pulse: number;
   seed: number;
+  repetitions: number;
+  idle: boolean;
+}
+
+interface StarPulse {
+  note: number;
+  x: number;
+  y: number;
+  life: number;
+  radius: number;
+  velocity: number;
 }
 
 export class ConstellationGenerator implements VisualGenerator {
   readonly mode = "constellation" as const;
   private stars: Star[] = [];
+  private pulses: StarPulse[] = [];
+  private lastChord = "";
+  private reorganize = 0;
 
   noteTriggered(note: HeldNote, state: MusicalState): void {
-    const existing = this.stars.find((star) => star.note === note.note);
+    const existing = this.stars.find(
+      (star) => star.note === note.note && !star.idle,
+    );
     if (existing) {
       existing.strength = Math.min(
-        1.5,
-        existing.strength + 0.34 + note.velocity / 260,
+        2.2,
+        existing.strength + 0.34 + note.velocity / 180,
       );
       existing.pulse = 1;
+      existing.repetitions += 1;
+      this.pulses.push({
+        note: note.note,
+        x: existing.x,
+        y: existing.y,
+        life: 1,
+        radius: 4,
+        velocity: note.velocity,
+      });
       return;
     }
-    const seed = note.note * 9.71 + state.sequence * 2.37;
-    this.stars.push({
+
+    const seed = note.note * 17.13 + state.sequence * 23.71;
+    const target = this.positionFor(note.note, seed);
+    const star: Star = {
       note: note.note,
-      x: 0.1 + hashNoise(seed, 2) * 0.8,
-      y:
-        0.12 +
-        (1 - (note.note - 24) / 84) * 0.67 +
-        (hashNoise(seed, 3) - 0.5) * 0.12,
-      strength: 0.55 + note.velocity / 160,
+      x: target.x,
+      y: target.y,
+      targetX: target.x,
+      targetY: target.y,
+      strength: 0.62 + velocityCurve(note.velocity) * 0.92,
       pulse: 1,
       seed,
+      repetitions: 1,
+      idle: false,
+    };
+    this.stars.push(star);
+    this.stars = this.stars.slice(-42);
+    this.pulses.push({
+      note: note.note,
+      x: star.x,
+      y: star.y,
+      life: 1,
+      radius: 3,
+      velocity: note.velocity,
     });
-    this.stars = this.stars.slice(-34);
   }
 
   render(context: CanvasRenderingContext2D, frame: VisualFrame): void {
-    const { width, height, time, params, music } = frame;
-    if (!this.stars.length) {
-      for (let i = 0; i < 9; i += 1) {
-        this.stars.push({
-          note: 48 + i * 2,
-          x: 0.15 + hashNoise(i, 1) * 0.7,
-          y: 0.15 + hashNoise(i, 7) * 0.65,
-          strength: 0.12,
-          pulse: 0,
-          seed: i * 8.1,
-        });
-      }
+    if (!this.stars.length) this.seedIdleStars();
+    if (frame.music.chord.label !== this.lastChord) {
+      this.lastChord = frame.music.chord.label;
+      this.reorganize = 1;
+      this.retargetStars(frame);
     }
+    this.reorganize *= Math.exp(-frame.delta / 850);
+
+    const profile = harmonyProfile(frame.music.chord.quality);
+    const motionScale = frame.params.reducedMotion ? 0.3 : 1;
+    const driftX = frame.params.autoMotion
+      ? Math.sin(frame.time * 0.000075) * frame.width * 0.035
+      : 0;
+    const driftY = frame.params.autoMotion
+      ? Math.cos(frame.time * 0.000093) * frame.height * 0.028
+      : 0;
+
+    const positions = this.stars.map((star) => {
+      const settle =
+        1 -
+        Math.exp(
+          -frame.delta *
+            (0.0018 +
+              frame.params.responsiveness * 0.000025 +
+              this.reorganize * 0.004),
+        );
+      star.x = lerp(star.x, star.targetX, settle);
+      star.y = lerp(star.y, star.targetY, settle);
+      const parallax = 0.6 + registerPosition(star.note) * 0.7;
+      return {
+        star,
+        x:
+          star.x * frame.width +
+          driftX * parallax +
+          Math.sin(frame.time * 0.00015 * motionScale + star.seed) *
+            (2 + profile.float * 7),
+        y:
+          star.y * frame.height +
+          driftY * parallax +
+          Math.cos(frame.time * 0.00012 * motionScale + star.seed) *
+            (2 + profile.float * 5),
+      };
+    });
 
     context.save();
     context.globalCompositeOperation = "lighter";
-    const positions = this.stars.map((star) => ({
-      star,
-      x:
-        star.x * width +
-        (params.autoMotion ? Math.sin(time * 0.00013 + star.seed) * 14 : 0),
-      y:
-        clamp(star.y, 0.06, 0.94) * height +
-        Math.cos(time * 0.0001 + star.seed) * params.idle * 0.09,
-    }));
+    this.drawConnections(context, frame, positions, profile);
+    this.drawStars(context, frame, positions, profile);
+    this.drawPulses(context, frame);
+    context.restore();
+  }
 
-    const maxDistance = Math.min(width, height) * (0.18 + params.density / 700);
-    for (let i = 0; i < positions.length; i += 1) {
-      for (let j = i + 1; j < positions.length; j += 1) {
+  private drawConnections(
+    context: CanvasRenderingContext2D,
+    frame: VisualFrame,
+    positions: Array<{ star: Star; x: number; y: number }>,
+    profile: ReturnType<typeof harmonyProfile>,
+  ): void {
+    const maxStars = qualityCount(frame, positions.length, 8);
+    const maxDistance =
+      Math.min(frame.width, frame.height) * (0.19 + frame.params.density / 640);
+    for (let i = 0; i < maxStars; i += 1) {
+      for (let j = i + 1; j < maxStars; j += 1) {
         const a = positions[i];
         const b = positions[j];
-        const distance = Math.hypot(a.x - b.x, a.y - b.y);
-        const musicalConnection = Math.abs(a.star.note - b.star.note) % 12;
-        if (
-          distance > maxDistance ||
-          (![0, 3, 4, 5, 7, 8, 9].includes(musicalConnection) &&
-            music.notes.length > 1)
-        )
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared > maxDistance * maxDistance) continue;
+        const interval = Math.abs(a.star.note - b.star.note) % 12;
+        const consonant = [0, 3, 4, 5, 7, 8, 9].includes(interval);
+        if (!consonant && frame.music.notes.length > 1 && profile.warp < 0.5)
           continue;
-        const alpha =
+        const distance = Math.sqrt(distanceSquared);
+        const strength =
           (1 - distance / maxDistance) *
-          0.13 *
           Math.min(a.star.strength, b.star.strength);
+        const pulseBoost =
+          Math.max(a.star.pulse, b.star.pulse) * 0.16 +
+          frame.dynamics.attack * 0.1;
+        const alpha =
+          strength *
+          (0.055 +
+            frame.dynamics.held * 0.065 +
+            pulseBoost +
+            (consonant ? 0.025 : 0));
+        const curve =
+          Math.sin(frame.time * 0.00032 + a.star.seed * 0.1 + b.star.seed) *
+          (3 + profile.warp * 26);
         context.beginPath();
         context.moveTo(a.x, a.y);
-        const curve = Math.sin(time * 0.0004 + i * j) * music.tension * 24;
         context.quadraticCurveTo(
-          (a.x + b.x) / 2 + curve,
-          (a.y + b.y) / 2 - curve,
+          (a.x + b.x) / 2 - dy * 0.05 + curve,
+          (a.y + b.y) / 2 + dx * 0.05 - curve,
           b.x,
           b.y,
         );
-        context.strokeStyle = rgba(noteColor(frame, a.star.note), alpha);
-        context.lineWidth = 0.5;
+        context.strokeStyle = rgba(
+          noteColor(frame, a.star.note, interval / 48),
+          alpha,
+        );
+        context.lineWidth =
+          0.45 +
+          strength * 0.65 +
+          (a.star.repetitions + b.star.repetitions) * 0.035;
         context.stroke();
       }
     }
+  }
 
-    for (const position of positions) {
-      const { star, x, y } = position;
-      star.pulse *= 0.93;
-      star.strength *= music.sustain ? 0.9997 : 0.999;
-      const twinkle = 0.78 + Math.sin(time * 0.002 + star.seed) * 0.22;
-      const radius = (1.2 + star.strength * 2.5 + star.pulse * 6) * twinkle;
+  private drawStars(
+    context: CanvasRenderingContext2D,
+    frame: VisualFrame,
+    positions: Array<{ star: Star; x: number; y: number }>,
+    profile: ReturnType<typeof harmonyProfile>,
+  ): void {
+    for (const { star, x, y } of positions) {
+      star.pulse *= Math.exp(-frame.delta / 300);
+      if (!star.idle)
+        star.strength *= frame.music.sustain
+          ? Math.exp(-frame.delta / 40000)
+          : Math.exp(-frame.delta / 18000);
+      const force = clamp(star.strength, 0.08, 2);
+      const twinkle =
+        0.86 +
+        Math.sin(frame.time * 0.0021 + star.seed) *
+          (0.09 + profile.crystalline * 0.07);
+      const radius =
+        (1.4 +
+          force * 2.7 +
+          star.pulse * (4 + star.repetitions * 0.55) +
+          frame.dynamics.attack * 1.5) *
+        twinkle;
       const color = noteColor(frame, star.note);
       drawSoftPoint(
         context,
@@ -118,21 +231,140 @@ export class ConstellationGenerator implements VisualGenerator {
         y,
         radius,
         color,
-        clamp(star.strength * 0.55, 0.04, 0.82),
+        clamp(
+          (star.idle ? 0.16 : 0.36) + force * 0.18 + star.pulse * 0.25,
+          0.08,
+          0.92,
+        ),
       );
+
+      const rayLength =
+        radius *
+        (1.5 +
+          profile.crystalline * 1.2 +
+          Math.min(3, star.repetitions) * 0.12);
       context.beginPath();
-      context.moveTo(x - radius * 2, y);
-      context.lineTo(x + radius * 2, y);
-      context.moveTo(x, y - radius * 2);
-      context.lineTo(x, y + radius * 2);
-      context.strokeStyle = rgba(color, star.strength * 0.15);
+      context.moveTo(x - rayLength, y);
+      context.lineTo(x + rayLength, y);
+      context.moveTo(x, y - rayLength);
+      context.lineTo(x, y + rayLength);
+      context.strokeStyle = rgba(
+        color,
+        (star.idle ? 0.05 : 0.11) + star.pulse * 0.14,
+      );
       context.lineWidth = 0.45;
       context.stroke();
+
+      if (star.repetitions > 1 && !star.idle) {
+        context.beginPath();
+        context.arc(
+          x,
+          y,
+          radius * (1.8 + (star.repetitions % 4) * 0.35),
+          0,
+          Math.PI * 2,
+        );
+        context.strokeStyle = rgba(color, 0.055 + star.pulse * 0.12);
+        context.lineWidth = 0.55;
+        context.stroke();
+      }
     }
-    context.restore();
+  }
+
+  private drawPulses(
+    context: CanvasRenderingContext2D,
+    frame: VisualFrame,
+  ): void {
+    for (const pulse of this.pulses) {
+      const force = velocityCurve(pulse.velocity);
+      pulse.radius += frame.delta * (0.04 + force * 0.14);
+      pulse.life -= frame.delta * 0.00085;
+      const x = pulse.x * frame.width;
+      const y = pulse.y * frame.height;
+      context.beginPath();
+      context.arc(x, y, pulse.radius, 0, Math.PI * 2);
+      context.strokeStyle = rgba(
+        noteColor(frame, pulse.note),
+        pulse.life * (0.14 + force * 0.34),
+      );
+      context.shadowColor = noteColor(frame, pulse.note);
+      context.shadowBlur = 6 + frame.params.glow * 0.1;
+      context.lineWidth = 0.7 + force * 1.7;
+      context.stroke();
+    }
+    this.pulses = this.pulses.filter((pulse) => pulse.life > 0);
+  }
+
+  private retargetStars(frame: VisualFrame): void {
+    const root = frame.music.chord.root ?? 0;
+    for (const star of this.stars) {
+      const shift = ((star.note - root + 12) % 12) / 12;
+      const base = this.positionFor(
+        star.note,
+        star.seed + root * 11.3 + frame.music.sequence,
+      );
+      star.targetX = clamp(
+        base.x + Math.sin(shift * Math.PI * 2) * 0.06,
+        0.08,
+        0.92,
+      );
+      star.targetY = clamp(
+        base.y + Math.cos(shift * Math.PI * 2) * 0.045,
+        0.08,
+        0.92,
+      );
+    }
+  }
+
+  private positionFor(note: number, seed: number): { x: number; y: number } {
+    const register = registerPosition(note);
+    const pitchAngle = ((note % 12) / 12) * Math.PI * 2;
+    return {
+      x: clamp(
+        0.5 +
+          Math.cos(pitchAngle) * (0.16 + register * 0.18) +
+          (hashNoise(seed, 2) - 0.5) * 0.17,
+        0.08,
+        0.92,
+      ),
+      y: clamp(
+        0.79 -
+          register * 0.58 +
+          Math.sin(pitchAngle) * 0.09 +
+          (hashNoise(seed, 3) - 0.5) * 0.14,
+        0.08,
+        0.92,
+      ),
+    };
+  }
+
+  private seedIdleStars(): void {
+    for (let index = 0; index < 11; index += 1) {
+      const note = 45 + index * 2;
+      const seed = index * 19.17 + 3.1;
+      const position = this.positionFor(note, seed);
+      this.stars.push({
+        note,
+        x: position.x,
+        y: position.y,
+        targetX: position.x,
+        targetY: position.y,
+        strength: 0.12 + hashNoise(seed, 5) * 0.08,
+        pulse: 0,
+        seed,
+        repetitions: 0,
+        idle: true,
+      });
+    }
   }
 
   reset(): void {
     this.stars = [];
+    this.pulses = [];
+    this.reorganize = 0;
+  }
+
+  getActiveCount(): number {
+    return this.stars.length + this.pulses.length;
   }
 }
