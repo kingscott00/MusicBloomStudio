@@ -12,7 +12,7 @@ import {
 import { VisualControls } from "./components/VisualControls";
 import { useMidi } from "./hooks/useMidi";
 import { usePerformance } from "./hooks/usePerformance";
-import { devNotesFromSearch } from "./music/devSimulation";
+import { devSimulationFromSearch } from "./music/devSimulation";
 import {
   builtInPresets,
   defaultParams,
@@ -58,6 +58,7 @@ export default function App() {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [renderMetrics, setRenderMetrics] = useState<RenderMetrics>({
     fps: 0,
+    frameCostMs: 0,
     activeElements: 0,
     qualityScale: 0.86,
     qualityLabel: "Auto 86%",
@@ -68,18 +69,26 @@ export default function App() {
     heldEnergy: 0,
     releaseEnergy: 0,
     sustainEnergy: 0,
+    attackingNotes: 0,
+    heldPhaseNotes: 0,
+    sustainedNotes: 0,
+    releasingNotes: 0,
+    longestHeldDuration: 0,
+    simulatedSustain: false,
+    physicalSustain: false,
   });
   const canvasRef = useRef<VisualCanvasHandle>(null);
   const stageRef = useRef<HTMLElement>(null);
   const performance = usePerformance(preferFlats);
   const devNoteOn = performance.noteOn;
   const devNoteOff = performance.noteOff;
+  const devSetSustain = performance.setSimulatedSustain;
   const midi = useMidi({
     onNote: performance.sendEvent,
-    onSustain: performance.sustain,
+    onSustain: performance.setPhysicalSustain,
     onDisconnect: () => {
       performance.clearSource("midi");
-      performance.sustain(false);
+      performance.setPhysicalSustain(false);
     },
   });
   const allPresets = useMemo(
@@ -88,13 +97,40 @@ export default function App() {
   );
 
   useEffect(() => {
-    const devNotes = devNotesFromSearch(window.location.search);
-    if (!devNotes.length) return;
-    for (const note of devNotes) devNoteOn(note, 104, "screen");
+    const simulation = devSimulationFromSearch(window.location.search);
+    if (!simulation.notes.length) return;
+    const timers: number[] = [];
+    let disposed = false;
+    let started = false;
+    // Deferring one microtask prevents React Strict Mode's development-only
+    // effect rehearsal from creating a phantom release before the real run.
+    queueMicrotask(() => {
+      if (disposed) return;
+      started = true;
+      if (simulation.sustain) devSetSustain(true);
+      for (const note of simulation.notes) devNoteOn(note, 104, "screen");
+      if (simulation.duration !== null) {
+        timers.push(
+          window.setTimeout(() => {
+            for (const note of simulation.notes) devNoteOff(note, "screen");
+          }, simulation.duration),
+        );
+      }
+      if (simulation.sustain && simulation.pedalUp !== null) {
+        timers.push(
+          window.setTimeout(() => devSetSustain(false), simulation.pedalUp),
+        );
+      }
+    });
     return () => {
-      for (const note of devNotes) devNoteOff(note, "screen");
+      disposed = true;
+      for (const timer of timers) window.clearTimeout(timer);
+      if (started) {
+        for (const note of simulation.notes) devNoteOff(note, "screen");
+        if (simulation.sustain) devSetSustain(false);
+      }
     };
-  }, [devNoteOff, devNoteOn]);
+  }, [devNoteOff, devNoteOn, devSetSustain]);
 
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({ params, preferFlats }));
@@ -182,6 +218,8 @@ export default function App() {
           ref={canvasRef}
           music={performance.music}
           params={params}
+          physicalSustain={performance.physicalSustain}
+          simulatedSustain={performance.simulatedSustain}
           onMetrics={diagnosticsOpen ? setRenderMetrics : undefined}
         />
         <div className="canvas-vignette" aria-hidden="true" />
@@ -320,6 +358,8 @@ export default function App() {
               music={performance.music}
               onNoteOn={performance.noteOn}
               onNoteOff={performance.noteOff}
+              onSustain={performance.setSimulatedSustain}
+              simulatedSustain={performance.simulatedSustain}
             />
           )}
         </div>

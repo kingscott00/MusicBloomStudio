@@ -3,6 +3,7 @@ import type {
   MusicalState,
   VisualFrame,
   VisualGenerator,
+  VisualNoteVoice,
 } from "../types";
 import { rgba } from "../utils/color";
 import { clamp, hashNoise, lerp } from "../utils/math";
@@ -84,6 +85,15 @@ export class OrbitGenerator implements VisualGenerator {
     const { width, height, time, delta, params, music } = frame;
     const latestNote = music.lastAttack?.note ?? 60;
     const composition = voiceComposition(frame.voices);
+    const voicesByNote = new Map<number, VisualNoteVoice>();
+    let development = 0;
+    let structuralLayer = 0;
+    for (const voice of frame.voices) {
+      voicesByNote.set(voice.note, voice);
+      if (voice.phase === "release") continue;
+      development = Math.max(development, voice.development);
+      structuralLayer = Math.max(structuralLayer, voice.structuralLayer);
+    }
     const profile = harmonyProfile(music.chord.quality);
     const motionScale = params.reducedMotion ? 0.35 : 1;
     const centerX =
@@ -125,9 +135,19 @@ export class OrbitGenerator implements VisualGenerator {
       base,
       profile,
       motionScale,
+      development,
+      structuralLayer,
     );
     this.drawGravityWaves(context, frame, centerX, centerY);
-    this.drawOrbiters(context, frame, centerX, centerY, base, motionScale);
+    this.drawOrbiters(
+      context,
+      frame,
+      centerX,
+      centerY,
+      base,
+      motionScale,
+      voicesByNote,
+    );
   }
 
   private drawCore(
@@ -175,11 +195,20 @@ export class OrbitGenerator implements VisualGenerator {
     base: number,
     profile: ReturnType<typeof harmonyProfile>,
     motionScale: number,
+    development: number,
+    structuralLayer: number,
   ): void {
     const { time, params } = frame;
-    const noteSources =
+    const noteSources: Array<{
+      note: number;
+      velocity: number;
+      energy: number;
+      development?: number;
+      structuralLayer?: number;
+      releaseProgress?: number;
+    }> =
       frame.voices.length > 0
-        ? frame.voices.filter((voice) => voice.energy > 0.035)
+        ? frame.voices
         : frame.music.recentNotes.slice(-3).map((event) => ({
             note: event.note,
             velocity: event.velocity,
@@ -191,7 +220,9 @@ export class OrbitGenerator implements VisualGenerator {
         3 +
           noteSources.length +
           profile.layerBonus +
-          Math.round(frame.dynamics.held * 2),
+          Math.round(frame.dynamics.held * 2) +
+          Math.round(development) +
+          Math.round(structuralLayer),
         3,
         11,
       ),
@@ -205,10 +236,17 @@ export class OrbitGenerator implements VisualGenerator {
       const source = noteSources[ring % Math.max(1, noteSources.length)];
       const note = source?.note ?? (frame.music.chord.root ?? 48) + ring * 2;
       const register = registerPosition(note);
+      const sourceDevelopment = source?.development ?? 0;
+      const sourceStructure = source?.structuralLayer ?? 0;
+      const releaseProgress = source?.releaseProgress ?? 0;
       const radius =
         base *
         (1.05 + ring * 0.58 + register * 0.7) *
-        (0.86 + profile.openness * 0.08 + profile.stretch * 0.08);
+        (0.86 + profile.openness * 0.08 + profile.stretch * 0.08) *
+        (1 +
+          sourceDevelopment * 0.08 +
+          sourceStructure * 0.12 +
+          releaseProgress * 0.24);
       const direction = ring % 2 === 0 ? 1 : -1;
       const tilt =
         0.26 +
@@ -236,7 +274,9 @@ export class OrbitGenerator implements VisualGenerator {
         frame.dynamics.held * 0.11 +
         frame.dynamics.attack * 0.12 +
         (source ? velocityCurve(source.velocity) * 0.1 : 0) +
-        (source && "energy" in source ? source.energy * 0.08 : 0);
+        (source?.energy ?? 0) * 0.08 +
+        sourceDevelopment * 0.04 -
+        releaseProgress * 0.08;
 
       context.save();
       context.rotate(rotation);
@@ -304,7 +344,7 @@ export class OrbitGenerator implements VisualGenerator {
         frame.delta *
         (0.08 + force * 0.22) *
         (frame.params.reducedMotion ? 0.45 : 1);
-      wave.life -= frame.delta * (frame.music.sustain ? 0.00032 : 0.00062);
+      wave.life -= frame.delta * 0.0011 * (0.92 - force * 0.12);
       const offsetX = pitchPosition(wave.note) * frame.width * 0.055;
       const offsetY = (0.5 - registerPosition(wave.note)) * frame.height * 0.08;
       context.beginPath();
@@ -337,15 +377,20 @@ export class OrbitGenerator implements VisualGenerator {
     cy: number,
     base: number,
     motionScale: number,
+    voicesByNote: Map<number, VisualNoteVoice>,
   ): void {
     context.save();
     context.globalCompositeOperation = "lighter";
     for (const orbiter of this.orbiters) {
-      const voice = frame.voices.find(
-        (candidate) => candidate.note === orbiter.note,
-      );
+      const voice = voicesByNote.get(orbiter.note);
       orbiter.targetRadius =
-        base * (1.1 + registerPosition(orbiter.note) * 4.7);
+        base *
+        (1.1 + registerPosition(orbiter.note) * 4.7) *
+        (1 +
+          (voice?.development ?? 0) * 0.12 +
+          (voice?.structuralLayer ?? 0) * 0.18 +
+          (voice?.releaseProgress ?? 0) *
+            (0.18 + (voice?.releaseDepth ?? 0) * 0.28));
       orbiter.radius = lerp(
         orbiter.radius,
         orbiter.targetRadius,
@@ -362,7 +407,9 @@ export class OrbitGenerator implements VisualGenerator {
         (voice?.phase === "sustain"
           ? 0.000035
           : voice?.phase === "release"
-            ? 0.00016 * (1.15 - voice.release)
+            ? 0.0005 *
+              (0.75 + voice.releaseProgress * 0.8) *
+              (1 - voice.releaseDepth * 0.45)
             : voice
               ? 0.000045
               : 0.0003);
@@ -381,7 +428,12 @@ export class OrbitGenerator implements VisualGenerator {
         context,
         x,
         y,
-        orbiter.size * (0.7 + orbiter.force * 0.45),
+        orbiter.size *
+          (0.7 +
+            orbiter.force * 0.45 +
+            (voice?.development ?? 0) * 0.25 +
+            (voice?.structuralLayer ?? 0) * 0.32) *
+          (1 - (voice?.releaseProgress ?? 0) * 0.48),
         color,
         clamp(orbiter.life, 0, 1) * (0.48 + orbiter.force * 0.36),
       );

@@ -55,17 +55,23 @@ function calculateVoice(note: NoteLifecycle, now: number): VisualNoteVoice {
     0,
     (note.releasedAt === null ? now : note.releasedAt) - note.startedAt,
   );
+  const development = smoothstep(260, 720, heldDuration);
+  const structuralLayer = smoothstep(1150, 4200, heldDuration);
   const attack = note.releasedAt === null ? Math.exp(-age / 170) * velocity : 0;
   const maturedHold =
-    velocity * (0.42 + (1 - Math.exp(-heldDuration / 1100)) * 0.58);
+    velocity * (0.18 + development * 0.56 + structuralLayer * 0.26);
 
   if (note.releasedAt !== null) {
     const releaseAge = Math.max(0, now - note.releasedAt);
-    const durationDepth = 0.32 + clamp(heldDuration / 2000, 0, 1) * 0.68;
+    const durationDepth = smoothstep(80, 2200, heldDuration);
     const timeConstant = note.releasedFromSustain
-      ? 1900
-      : 720 + durationDepth * 520;
-    const release = Math.exp(-releaseAge / timeConstant) * maturedHold;
+      ? 1750 + durationDepth * 650
+      : 320 + durationDepth * 980;
+    const releaseProgress = 1 - Math.exp(-releaseAge / timeConstant);
+    const release =
+      Math.exp(-releaseAge / timeConstant) *
+      maturedHold *
+      (0.46 + durationDepth * 0.54);
     return {
       id: note.id,
       note: note.note,
@@ -78,6 +84,10 @@ function calculateVoice(note: NoteLifecycle, now: number): VisualNoteVoice {
       release,
       sustain: 0,
       energy: release,
+      development,
+      structuralLayer,
+      releaseProgress,
+      releaseDepth: durationDepth,
     };
   }
 
@@ -95,6 +105,10 @@ function calculateVoice(note: NoteLifecycle, now: number): VisualNoteVoice {
       release: 0,
       sustain,
       energy: Math.max(attack, sustain),
+      development,
+      structuralLayer,
+      releaseProgress: 0,
+      releaseDepth: 0,
     };
   }
 
@@ -111,7 +125,16 @@ function calculateVoice(note: NoteLifecycle, now: number): VisualNoteVoice {
     release: 0,
     sustain: 0,
     energy: Math.max(attack, hold),
+    development,
+    structuralLayer,
+    releaseProgress: 0,
+    releaseDepth: 0,
   };
+}
+
+function smoothstep(start: number, end: number, value: number): number {
+  const position = clamp((value - start) / (end - start), 0, 1);
+  return position * position * (3 - 2 * position);
 }
 
 function voiceId(note: number, startedAt: number, source: string): string {

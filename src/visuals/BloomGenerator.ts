@@ -46,6 +46,7 @@ export class BloomGenerator implements VisualGenerator {
   private motes: BloomMote[] = [];
   private pulse = 0;
   private organismPhase = 0;
+  private auraSprites = new Map<string, HTMLCanvasElement>();
 
   noteTriggered(note: HeldNote, state: MusicalState): void {
     const force = velocityCurve(note.velocity);
@@ -93,6 +94,13 @@ export class BloomGenerator implements VisualGenerator {
         ? composition.register
         : registerPosition(latestNote);
     const profile = harmonyProfile(music.chord.quality);
+    let development = 0;
+    let structuralLayer = 0;
+    for (const voice of frame.voices) {
+      if (voice.phase === "release") continue;
+      development = Math.max(development, voice.development);
+      structuralLayer = Math.max(structuralLayer, voice.structuralLayer);
+    }
     const motionScale = params.reducedMotion ? 0.34 : 1;
     const autoDrift = params.autoMotion ? 1 : 0.18;
     const pitchDrift =
@@ -129,6 +137,7 @@ export class BloomGenerator implements VisualGenerator {
       registerScale *
       breath *
       (1 + this.pulse * 0.2) *
+      (1 + development * 0.08 + structuralLayer * 0.07) *
       (0.88 + profile.stretch * 0.12);
     const intensity = Math.max(0.16 + params.idle / 440, dynamics.intensity);
 
@@ -146,16 +155,18 @@ export class BloomGenerator implements VisualGenerator {
       4 +
         Math.min(4, music.notes.length) +
         profile.layerBonus +
-        Math.round(dynamics.held * 2),
+        Math.round(dynamics.held * 2) +
+        Math.round(development) +
+        Math.round(structuralLayer),
       4,
       10,
     );
-    const layers = qualityCount(frame, desiredLayers, 4);
+    const layers = qualityCount(frame, desiredLayers, 3);
     const petals = Math.max(
       3,
       Math.round(
         (params.symmetry + Math.min(3, music.notes.length)) *
-          (0.84 + frame.qualityScale * 0.16),
+          (0.62 + frame.qualityScale * 0.38),
       ),
     );
 
@@ -211,26 +222,19 @@ export class BloomGenerator implements VisualGenerator {
     intensity: number,
   ): void {
     const color = noteColor(frame, note);
-    const aura = context.createRadialGradient(
-      cx,
-      cy,
-      radius * 0.03,
-      cx,
-      cy,
-      radius * 1.42,
-    );
-    aura.addColorStop(0, rgba(color, 0.07 + intensity * 0.1));
-    aura.addColorStop(0.26, rgba(color, 0.025 + intensity * 0.032));
-    aura.addColorStop(0.72, rgba(color, 0.012));
-    aura.addColorStop(1, rgba(color, 0));
+    const aura = this.getAuraSprite(color);
+    const auraSize = radius * 2.9;
+    const previousAlpha = context.globalAlpha;
+    context.globalAlpha = previousAlpha * (0.25 + intensity * 0.32);
     context.globalCompositeOperation = "screen";
-    context.fillStyle = aura;
-    context.fillRect(
-      cx - radius * 1.45,
-      cy - radius * 1.45,
-      radius * 2.9,
-      radius * 2.9,
+    context.drawImage(
+      aura,
+      cx - auraSize / 2,
+      cy - auraSize / 2,
+      auraSize,
+      auraSize,
     );
+    context.globalAlpha = previousAlpha;
 
     drawSoftPoint(
       context,
@@ -240,6 +244,37 @@ export class BloomGenerator implements VisualGenerator {
       noteColor(frame, note, 0.08),
       0.24 + intensity * 0.22,
     );
+  }
+
+  private getAuraSprite(color: string): HTMLCanvasElement {
+    const cached = this.auraSprites.get(color);
+    if (cached) return cached;
+    const sprite = document.createElement("canvas");
+    sprite.width = 256;
+    sprite.height = 256;
+    const spriteContext = sprite.getContext("2d");
+    if (spriteContext) {
+      const aura = spriteContext.createRadialGradient(
+        128,
+        128,
+        2,
+        128,
+        128,
+        128,
+      );
+      aura.addColorStop(0, rgba(color, 0.12));
+      aura.addColorStop(0.24, rgba(color, 0.04));
+      aura.addColorStop(0.7, rgba(color, 0.009));
+      aura.addColorStop(1, rgba(color, 0));
+      spriteContext.fillStyle = aura;
+      spriteContext.fillRect(0, 0, 256, 256);
+    }
+    if (this.auraSprites.size >= 24) {
+      const oldest = this.auraSprites.keys().next().value;
+      if (oldest) this.auraSprites.delete(oldest);
+    }
+    this.auraSprites.set(color, sprite);
+    return sprite;
   }
 
   private drawPetalLayer(
@@ -255,6 +290,17 @@ export class BloomGenerator implements VisualGenerator {
   ): void {
     const { time, dynamics, params } = frame;
     const inward = 1 - profile.inward * 0.22;
+    const petalFill = rgba(color, alpha * (0.07 + params.glow / 1800));
+    const petalStroke = rgba(color, alpha);
+    const veinStroke = rgba(color, alpha * 0.42);
+    const petalWidth =
+      0.55 +
+      (1 - layer / 10) * 0.45 +
+      dynamics.velocity * 0.65 +
+      profile.crystalline * 0.25;
+    context.fillStyle = petalFill;
+    context.shadowColor = color;
+    context.shadowBlur = 2 + params.glow * 0.055 + dynamics.attack * 7;
     for (let petal = 0; petal < petalCount; petal += 1) {
       const baseAngle =
         (petal / petalCount) * Math.PI * 2 +
@@ -316,19 +362,12 @@ export class BloomGenerator implements VisualGenerator {
         startY,
       );
       context.closePath();
-      context.fillStyle = rgba(color, alpha * (0.07 + params.glow / 1800));
       context.fill();
-      context.shadowColor = color;
-      context.shadowBlur = 3 + params.glow * 0.075 + dynamics.attack * 9;
-      context.strokeStyle = rgba(color, alpha);
-      context.lineWidth =
-        0.55 +
-        (1 - layer / 10) * 0.45 +
-        dynamics.velocity * 0.65 +
-        profile.crystalline * 0.25;
+      context.strokeStyle = petalStroke;
+      context.lineWidth = petalWidth;
       context.stroke();
 
-      if (layer < 3 && petal % 2 === 0) {
+      if (layer < 3 && petal % 2 === 0 && frame.qualityScale > 0.62) {
         context.beginPath();
         context.moveTo(startX, startY);
         context.quadraticCurveTo(
@@ -337,7 +376,7 @@ export class BloomGenerator implements VisualGenerator {
           tipX,
           tipY,
         );
-        context.strokeStyle = rgba(color, alpha * 0.42);
+        context.strokeStyle = veinStroke;
         context.lineWidth = 0.45;
         context.stroke();
       }
@@ -350,12 +389,17 @@ export class BloomGenerator implements VisualGenerator {
     radius: number,
     profile: ReturnType<typeof harmonyProfile>,
   ): void {
-    const voices = frame.voices
-      .filter((voice) => voice.energy > 0.035)
-      .slice(-9);
     const root = frame.music.chord.root ?? frame.music.notes[0]?.note ?? 60;
     const inversionTurn = (frame.music.chord.inversion ?? 0) * 0.08;
-    for (const voice of voices) {
+    let drawn = 0;
+    for (
+      let voiceIndex = frame.voices.length - 1;
+      voiceIndex >= 0 && drawn < 9;
+      voiceIndex -= 1
+    ) {
+      const voice = frame.voices[voiceIndex];
+      if (voice.energy <= 0.035) continue;
+      drawn += 1;
       const interval = (voice.note - root + 120) % 12;
       const angle =
         (interval / 12) * Math.PI * 2 -
@@ -365,19 +409,31 @@ export class BloomGenerator implements VisualGenerator {
       const register = registerPosition(voice.note);
       const orbit =
         radius *
-        (0.28 + register * 0.62 + profile.openness * 0.08 + voice.hold * 0.08);
+        (0.28 +
+          register * 0.62 +
+          profile.openness * 0.08 +
+          voice.hold * 0.08 +
+          voice.releaseProgress * (0.12 + voice.releaseDepth * 0.28));
       const x = Math.cos(angle) * orbit;
       const y = Math.sin(angle) * orbit * (0.78 + profile.inward * 0.12);
       const color = noteColor(frame, voice.note);
       const size =
         radius *
-        (0.07 +
-          voice.energy * 0.11 +
+        (0.055 +
+          voice.energy * 0.08 +
           voice.attack * 0.1 +
-          Math.min(0.08, voice.heldDuration / 24000));
+          voice.development * 0.06 +
+          voice.structuralLayer * 0.075);
+      const releaseScale =
+        1 - voice.releaseProgress * (0.7 - voice.releaseDepth * 0.28);
 
       context.save();
       context.translate(x, y);
+      context.scale(
+        releaseScale,
+        releaseScale *
+          (1 - voice.releaseProgress * (0.28 + profile.inward * 0.12)),
+      );
       context.rotate(
         angle +
           Math.PI / 2 +
@@ -412,6 +468,42 @@ export class BloomGenerator implements VisualGenerator {
       context.fill();
       context.stroke();
 
+      if (voice.development > 0.08 && voice.phase !== "release") {
+        context.beginPath();
+        context.ellipse(
+          0,
+          size * 0.12,
+          size * (0.32 + voice.development * 0.16),
+          size * (0.55 + voice.development * 0.24),
+          0,
+          0,
+          Math.PI * 2,
+        );
+        context.strokeStyle = rgba(
+          color,
+          voice.development * (0.1 + voice.energy * 0.18),
+        );
+        context.lineWidth = 0.5;
+        context.stroke();
+      }
+      if (voice.structuralLayer > 0.08 && voice.phase !== "release") {
+        for (let tendril = -1; tendril <= 1; tendril += 1) {
+          context.beginPath();
+          context.moveTo(0, size * 0.3);
+          context.bezierCurveTo(
+            tendril * size * 0.45,
+            size * 0.9,
+            -tendril * size * 0.55,
+            size * 1.3,
+            tendril * size * 0.28,
+            size * (1.55 + voice.structuralLayer * 0.45),
+          );
+          context.strokeStyle = rgba(color, voice.structuralLayer * 0.18);
+          context.lineWidth = 0.45;
+          context.stroke();
+        }
+      }
+
       if (voice.phase === "sustain" || voice.phase === "release") {
         context.setLineDash(voice.phase === "sustain" ? [3, 5] : [2, 8]);
         context.beginPath();
@@ -431,6 +523,26 @@ export class BloomGenerator implements VisualGenerator {
         context.setLineDash([]);
       }
       context.restore();
+
+      if (voice.phase === "release") {
+        const shedCount = frame.qualityScale > 0.7 ? 3 : 2;
+        for (let shed = 0; shed < shedCount; shed += 1) {
+          const shedAngle =
+            angle +
+            (shed - (shedCount - 1) / 2) * 0.32 +
+            Math.sin(voice.note + shed) * 0.12;
+          const distance =
+            orbit + radius * voice.releaseProgress * (0.22 + shed * 0.11);
+          drawSoftPoint(
+            context,
+            Math.cos(shedAngle) * distance,
+            Math.sin(shedAngle) * distance * (0.78 + profile.inward * 0.12),
+            1.2 + voice.releaseDepth * 1.6,
+            color,
+            voice.release * (0.18 + voice.releaseDepth * 0.24),
+          );
+        }
+      }
     }
   }
 
@@ -532,10 +644,7 @@ export class BloomGenerator implements VisualGenerator {
         frame.delta *
         (0.045 + force * 0.16) *
         (frame.params.reducedMotion ? 0.5 : 1);
-      impulse.life -=
-        frame.delta *
-        (frame.music.sustain ? 0.00036 : 0.00072) *
-        (0.9 - force * 0.16);
+      impulse.life -= frame.delta * 0.00165 * (0.9 - force * 0.16);
       const x = cx + pitchPosition(impulse.note) * frame.width * 0.17;
       const y = cy + (0.5 - register) * frame.height * 0.24;
       const radius =
@@ -574,7 +683,11 @@ export class BloomGenerator implements VisualGenerator {
       }
     }
     context.restore();
-    this.impulses = this.impulses.filter((impulse) => impulse.life > 0);
+    let writeIndex = 0;
+    for (const impulse of this.impulses) {
+      if (impulse.life > 0) this.impulses[writeIndex++] = impulse;
+    }
+    this.impulses.length = writeIndex;
   }
 
   private drawMotes(
@@ -593,7 +706,7 @@ export class BloomGenerator implements VisualGenerator {
         (frame.params.reducedMotion ? 0.4 : 1);
       mote.life -=
         frame.delta *
-        (frame.music.sustain ? 0.00019 : 0.00042) *
+        (frame.music.sustain ? 0.00027 : 0.00072) *
         (0.9 + mote.depth * 0.12);
       const flutter =
         Math.sin(frame.time * 0.0012 + mote.seed) * (3 + mote.depth * 4);

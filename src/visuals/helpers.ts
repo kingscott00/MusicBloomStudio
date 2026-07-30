@@ -14,12 +14,21 @@ export interface Spark {
   seed: number;
 }
 
+const noteColorCache = new Map<string, string>();
+const softPointCache = new Map<string, HTMLCanvasElement>();
+
 export function noteColor(
   frame: VisualFrame,
   note: number,
   offset = 0,
 ): string {
-  return paletteColor(frame.colors, note / 12 + offset);
+  const position = note / 12 + offset;
+  const key = `${frame.colors.join(".")}|${Math.round(position * 256)}`;
+  const cached = noteColorCache.get(key);
+  if (cached) return cached;
+  const color = paletteColor(frame.colors, position);
+  noteColorCache.set(key, color);
+  return color;
 }
 
 export function glowStroke(
@@ -54,7 +63,19 @@ export function limitParticles<T extends { life: number }>(
       multiplier *
       (0.55 + frame.qualityScale * 0.45),
   );
-  return particles.filter((particle) => particle.life > 0).slice(-cap);
+  let write = 0;
+  for (let read = 0; read < particles.length; read += 1) {
+    if (particles[read].life > 0) {
+      particles[write] = particles[read];
+      write += 1;
+    }
+  }
+  const start = Math.max(0, write - cap);
+  const kept = write - start;
+  for (let index = 0; index < kept; index += 1)
+    particles[index] = particles[start + index];
+  particles.length = kept;
+  return particles;
 }
 
 export function organicWave(angle: number, time: number, seed: number): number {
@@ -73,18 +94,43 @@ export function drawSoftPoint(
   color: string,
   alpha: number,
 ): void {
-  const safeRadius = Math.max(0.5, radius);
-  context.shadowColor = color;
-  context.shadowBlur = safeRadius * 2.4;
-  context.fillStyle = rgba(color, clamp(alpha * 0.32, 0, 1));
-  context.beginPath();
-  context.arc(x, y, safeRadius * 1.85, 0, Math.PI * 2);
-  context.fill();
-  context.shadowBlur = safeRadius * 1.25;
-  context.fillStyle = rgba(color, clamp(alpha, 0, 1));
-  context.beginPath();
-  context.arc(x, y, safeRadius * 0.58, 0, Math.PI * 2);
-  context.fill();
+  const safeRadius = Math.max(0.5, Math.round(radius * 2) / 2);
+  const key = `${color}|${safeRadius}`;
+  let sprite = softPointCache.get(key);
+  if (!sprite) {
+    const padding = 3.4;
+    const size = Math.max(4, Math.ceil(safeRadius * padding * 2));
+    sprite = document.createElement("canvas");
+    sprite.width = size;
+    sprite.height = size;
+    const spriteContext = sprite.getContext("2d");
+    if (spriteContext) {
+      const center = size / 2;
+      const gradient = spriteContext.createRadialGradient(
+        center,
+        center,
+        0,
+        center,
+        center,
+        center,
+      );
+      gradient.addColorStop(0, rgba(color, 1));
+      gradient.addColorStop(0.18, rgba(color, 0.9));
+      gradient.addColorStop(0.52, rgba(color, 0.24));
+      gradient.addColorStop(1, rgba(color, 0));
+      spriteContext.fillStyle = gradient;
+      spriteContext.fillRect(0, 0, size, size);
+    }
+    if (softPointCache.size >= 96) {
+      const oldest = softPointCache.keys().next().value;
+      if (oldest) softPointCache.delete(oldest);
+    }
+    softPointCache.set(key, sprite);
+  }
+  const previousAlpha = context.globalAlpha;
+  context.globalAlpha = previousAlpha * clamp(alpha, 0, 1);
+  context.drawImage(sprite, x - sprite.width / 2, y - sprite.height / 2);
+  context.globalAlpha = previousAlpha;
 }
 
 export function qualityCount(

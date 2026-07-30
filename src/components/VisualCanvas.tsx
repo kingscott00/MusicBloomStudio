@@ -26,6 +26,8 @@ export interface VisualCanvasHandle {
 interface VisualCanvasProps {
   music: MusicalState;
   params: VisualParameters;
+  physicalSustain: boolean;
+  simulatedSustain: boolean;
   onMetrics?: (metrics: RenderMetrics) => void;
 }
 
@@ -36,11 +38,18 @@ const qualityPreset: Record<Exclude<RenderQuality, "auto">, number> = {
 };
 
 export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
-  function VisualCanvas({ music, params, onMetrics }, ref) {
+  function VisualCanvas(
+    { music, params, physicalSustain, simulatedSustain, onMetrics },
+    ref,
+  ) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const musicRef = useRef(music);
     const paramsRef = useRef(params);
     const metricsRef = useRef(onMetrics);
+    const sustainSourcesRef = useRef({
+      physical: physicalSustain,
+      simulated: simulatedSustain,
+    });
     const lastSequence = useRef(music.sequence);
     const generators = useRef<Record<VisualMode, VisualGenerator>>({
       bloom: new BloomGenerator(),
@@ -51,6 +60,10 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
     musicRef.current = music;
     paramsRef.current = params;
     metricsRef.current = onMetrics;
+    sustainSourcesRef.current = {
+      physical: physicalSustain,
+      simulated: simulatedSustain,
+    };
 
     useImperativeHandle(ref, () => ({
       savePng: () => {
@@ -83,10 +96,11 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
       let cssWidth = 1;
       let cssHeight = 1;
       let appliedRatio = 0;
-      let adaptiveScale = 0.86;
+      let adaptiveScale = 0.84;
       let lowFpsSamples = 0;
       let highFpsSamples = 0;
       let frameCounter = 0;
+      let renderCostTotal = 0;
       let metricsStartedAt = previous;
       let lastMetricsAt = previous;
       let attackEnvelope = 0;
@@ -97,6 +111,8 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
       let velocityEnvelope = 0.25;
       let lastMode = paramsRef.current.mode;
       let modeTransition = 0;
+      let cachedPaletteId = paramsRef.current.paletteId;
+      let cachedPalette = getPalette(cachedPaletteId);
 
       const getQualityScale = (): number => {
         const setting = paramsRef.current.quality;
@@ -113,11 +129,11 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
               ? 1
               : 1.6;
         return Math.max(
-          1,
+          0.9,
           Math.min(
             ceiling,
             (window.devicePixelRatio || 1) *
-              (0.72 + quality * 0.38) *
+              (0.48 + quality * 0.42) *
               fullscreenPenalty,
           ),
         );
@@ -155,33 +171,56 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
         calm: boolean,
         musicState: MusicalState,
         dynamics: VisualDynamics,
+        voices: ReturnType<typeof calculateVisualVoices>,
       ) => {
         const currentParams = paramsRef.current;
         if (currentParams.quality === "auto" && !calm) {
-          if (fps < 47) {
-            lowFpsSamples += 1;
+          if (fps < 55) {
+            lowFpsSamples += fps < 36 ? 3 : 1;
             highFpsSamples = 0;
-          } else if (fps > 57) {
+          } else if (fps > 58) {
             highFpsSamples += 1;
             lowFpsSamples = 0;
           } else {
             lowFpsSamples = Math.max(0, lowFpsSamples - 1);
             highFpsSamples = Math.max(0, highFpsSamples - 1);
           }
-          if (lowFpsSamples >= 3 && adaptiveScale > 0.54) {
-            adaptiveScale = Math.max(0.52, adaptiveScale - 0.12);
+          if (lowFpsSamples >= 2 && adaptiveScale > 0.44) {
+            adaptiveScale = Math.max(
+              0.42,
+              adaptiveScale - (fps < 36 ? 0.18 : fps < 48 ? 0.12 : 0.08),
+            );
             lowFpsSamples = 0;
-          } else if (highFpsSamples >= 5 && adaptiveScale < 1) {
-            adaptiveScale = Math.min(1, adaptiveScale + 0.08);
+          } else if (highFpsSamples >= 10 && adaptiveScale < 1) {
+            adaptiveScale = Math.min(1, adaptiveScale + 0.04);
             highFpsSamples = 0;
           }
         }
 
         const qualityScale = getQualityScale();
         const activeElements =
-          generators.current[currentParams.mode].getActiveCount();
+          generators.current[currentParams.mode].getActiveCount() +
+          voices.length;
+        let attackingNotes = 0;
+        let heldPhaseNotes = 0;
+        let sustainedNotes = 0;
+        let releasingNotes = 0;
+        let longestHeldDuration = 0;
+        for (const voice of voices) {
+          if (voice.phase === "attack") attackingNotes += 1;
+          else if (voice.phase === "held") heldPhaseNotes += 1;
+          else if (voice.phase === "sustain") sustainedNotes += 1;
+          else releasingNotes += 1;
+          if (voice.phase !== "release")
+            longestHeldDuration = Math.max(
+              longestHeldDuration,
+              voice.heldDuration,
+            );
+        }
+        const sustainSources = sustainSourcesRef.current;
         metricsRef.current?.({
           fps: Math.round(fps),
+          frameCostMs: renderCostTotal / Math.max(1, frameCounter),
           activeElements,
           qualityScale,
           qualityLabel:
@@ -195,10 +234,18 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           heldEnergy: dynamics.held,
           releaseEnergy: dynamics.release,
           sustainEnergy: dynamics.sustain,
+          attackingNotes,
+          heldPhaseNotes,
+          sustainedNotes,
+          releasingNotes,
+          longestHeldDuration,
+          simulatedSustain: sustainSources.simulated,
+          physicalSustain: sustainSources.physical,
         });
         lastMetricsAt = time;
         metricsStartedAt = time;
         frameCounter = 0;
+        renderCostTotal = 0;
       };
 
       const draw = (time: number) => {
@@ -207,7 +254,6 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
 
         const currentParams = paramsRef.current;
         const currentMusic = musicRef.current;
-        const voices = calculateVisualVoices(currentMusic.noteLifecycles, time);
         const lastAttackAge = currentMusic.lastAttack
           ? Math.max(0, time - currentMusic.lastAttack.timestamp)
           : Number.POSITIVE_INFINITY;
@@ -220,47 +266,18 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           0,
           1,
         );
-        const liveAttack = clamp(
-          voices.reduce((sum, voice) => sum + voice.attack, 0) /
-            Math.max(1, Math.sqrt(voices.length)),
-          0,
-          1,
-        );
-        const liveHeld = clamp(
-          voices.reduce((sum, voice) => sum + voice.hold, 0) /
-            Math.max(1, Math.sqrt(voices.length)),
-          0,
-          1,
-        );
-        const liveRelease = clamp(
-          voices.reduce((sum, voice) => sum + voice.release, 0) /
-            Math.max(1, Math.sqrt(voices.length)),
-          0,
-          1,
-        );
-        const liveSustain = clamp(
-          voices.reduce((sum, voice) => sum + voice.sustain, 0) /
-            Math.max(1, Math.sqrt(voices.length)),
-          0,
-          1,
-        );
-        const liveVelocity =
-          (currentMusic.rollingAverageVelocity / 127) *
-          (currentMusic.notes.length > 0 ? 1 : Math.exp(-lastAttackAge / 2600));
         if (currentParams.mode !== lastMode) {
           lastMode = currentParams.mode;
           modeTransition = 1;
         }
+        const hasLiveLifecycle = currentMusic.noteLifecycles.some(
+          (voice) =>
+            voice.releasedAt === null || time - voice.releasedAt < 4200,
+        );
         const calm =
-          voices.every((voice) => voice.energy < 0.025) &&
-          attackEnvelope < 0.025 &&
-          liveRhythm < 0.035;
+          !hasLiveLifecycle && attackEnvelope < 0.025 && liveRhythm < 0.035;
         const activeFrameInterval =
-          currentParams.quality === "low"
-            ? 1000 / 60
-            : currentParams.quality === "balanced"
-              ? 1000 / 90
-              : 1000 / 120;
+          currentParams.quality === "high" ? 1000 / 90 : 1000 / 60;
         const targetFrameInterval = calm
           ? currentParams.reducedMotion
             ? 1000 / 18
@@ -271,6 +288,28 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
         // Tolerance avoids accidentally halving the frame rate when refresh
         // timing lands a fraction below the requested interval.
         if (time - lastRendered < Math.max(0, targetFrameInterval - 1)) return;
+
+        // Lifecycle objects are created only for frames that will actually be
+        // rendered, avoiding work on skipped high-refresh callbacks.
+        const voices = calculateVisualVoices(currentMusic.noteLifecycles, time);
+        let attackTotal = 0;
+        let heldTotal = 0;
+        let releaseTotal = 0;
+        let sustainTotal = 0;
+        for (const voice of voices) {
+          attackTotal += voice.attack;
+          heldTotal += voice.hold;
+          releaseTotal += voice.release;
+          sustainTotal += voice.sustain;
+        }
+        const voiceDivisor = Math.max(1, Math.sqrt(voices.length));
+        const liveAttack = clamp(attackTotal / voiceDivisor, 0, 1);
+        const liveHeld = clamp(heldTotal / voiceDivisor, 0, 1);
+        const liveRelease = clamp(releaseTotal / voiceDivisor, 0, 1);
+        const liveSustain = clamp(sustainTotal / voiceDivisor, 0, 1);
+        const liveVelocity =
+          (currentMusic.rollingAverageVelocity / 127) *
+          (currentMusic.notes.length > 0 ? 1 : Math.exp(-lastAttackAge / 2600));
 
         const delta = Math.min(42, time - previous || 16.67);
         previous = time;
@@ -342,7 +381,12 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           chordStability,
         };
 
-        const palette = getPalette(currentParams.paletteId);
+        const renderStartedAt = performance.now();
+        if (currentParams.paletteId !== cachedPaletteId) {
+          cachedPaletteId = currentParams.paletteId;
+          cachedPalette = getPalette(cachedPaletteId);
+        }
+        const palette = cachedPalette;
         const fade =
           Math.max(0.02, (108 - currentParams.trails) / 430) *
           (currentMusic.sustain ? 0.58 : 1);
@@ -377,11 +421,12 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           dynamics,
           voices,
         });
+        renderCostTotal += performance.now() - renderStartedAt;
 
         if (time - lastMetricsAt > 800) {
           const fps =
             (frameCounter * 1000) / Math.max(1, time - metricsStartedAt);
-          emitMetrics(time, fps, calm, currentMusic, dynamics);
+          emitMetrics(time, fps, calm, currentMusic, dynamics, voices);
         }
       };
 

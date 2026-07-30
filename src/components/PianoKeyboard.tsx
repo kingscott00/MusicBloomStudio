@@ -9,6 +9,8 @@ interface PianoKeyboardProps {
     source?: "screen" | "computer",
   ) => void;
   onNoteOff: (note: number, source?: "screen" | "computer") => void;
+  onSustain: (down: boolean) => void;
+  simulatedSustain: boolean;
 }
 
 const START = 48;
@@ -37,8 +39,11 @@ export function PianoKeyboard({
   music,
   onNoteOn,
   onNoteOff,
+  onSustain,
+  simulatedSustain,
 }: PianoKeyboardProps) {
   const pressed = useRef(new Set<string>());
+  const sustainPressed = useRef(false);
   const active = useMemo(
     () => new Set(music.notes.map((note) => note.note)),
     [music.notes],
@@ -63,12 +68,24 @@ export function PianoKeyboard({
   useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
-      if (
-        target.matches("input, select, textarea, button") ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey
-      )
+      const editingOrActivating = target.matches(
+        "input, select, textarea, button, a, [contenteditable='true']",
+      );
+      if (event.code === "Space") {
+        if (
+          editingOrActivating ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey
+        )
+          return;
+        event.preventDefault();
+        if (event.repeat || sustainPressed.current) return;
+        sustainPressed.current = true;
+        onSustain(true);
+        return;
+      }
+      if (editingOrActivating || event.metaKey || event.ctrlKey || event.altKey)
         return;
       const key = event.key.toLowerCase();
       const note = COMPUTER_KEYS[key];
@@ -79,6 +96,12 @@ export function PianoKeyboard({
       onNoteOn(note, 92, "computer");
     };
     const keyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space" && sustainPressed.current) {
+        event.preventDefault();
+        sustainPressed.current = false;
+        onSustain(false);
+        return;
+      }
       const key = event.key.toLowerCase();
       const note = COMPUTER_KEYS[key];
       if (note === undefined) return;
@@ -89,6 +112,10 @@ export function PianoKeyboard({
       for (const key of pressed.current)
         onNoteOff(COMPUTER_KEYS[key], "computer");
       pressed.current.clear();
+      if (sustainPressed.current) {
+        sustainPressed.current = false;
+        onSustain(false);
+      }
     };
     window.addEventListener("keydown", keyDown);
     window.addEventListener("keyup", keyUp);
@@ -98,7 +125,7 @@ export function PianoKeyboard({
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", releaseAll);
     };
-  }, [onNoteOn, onNoteOff]);
+  }, [onNoteOn, onNoteOff, onSustain]);
 
   const pointerDown = (
     note: number,
@@ -126,7 +153,15 @@ export function PianoKeyboard({
           <span className="eyebrow">PLAY WITHOUT MIDI</span>
           <h2 id="keyboard-heading">Studio piano</h2>
         </div>
-        <span className="keyboard-hint">Computer keys A–K</span>
+        <div className="keyboard-shortcuts">
+          <span className="keyboard-hint">Computer keys A–K</span>
+          <span
+            className={`space-sustain ${simulatedSustain ? "active" : ""}`}
+            aria-live="polite"
+          >
+            {simulatedSustain ? "Space sustain on" : "Hold Space · sustain"}
+          </span>
+        </div>
       </div>
       <div className="piano" role="group" aria-label="On-screen piano keyboard">
         <div className="white-keys">

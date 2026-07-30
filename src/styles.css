@@ -930,6 +930,36 @@ input[type="range"] {
   letter-spacing: 0.05em;
 }
 
+.keyboard-shortcuts {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-direction: column;
+}
+
+.space-sustain {
+  padding: 3px 7px;
+  border: 1px solid rgba(156, 175, 202, 0.16);
+  border-radius: 999px;
+  color: #8e9aaf;
+  background: rgba(10, 15, 24, 0.5);
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.space-sustain.active {
+  border-color: rgba(135, 232, 217, 0.48);
+  color: #d8fff8;
+  background: rgba(68, 170, 154, 0.19);
+  box-shadow: 0 0 14px rgba(88, 230, 207, 0.16);
+}
+
 .piano {
   position: relative;
   height: 82px;

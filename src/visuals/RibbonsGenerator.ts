@@ -3,6 +3,7 @@ import type {
   MusicalState,
   VisualFrame,
   VisualGenerator,
+  VisualNoteVoice,
 } from "../types";
 import { rgba } from "../utils/color";
 import { clamp, hashNoise, lerp } from "../utils/math";
@@ -29,6 +30,7 @@ interface Ribbon {
   direction: number;
   points: RibbonPoint[];
   idle: boolean;
+  releaseDrain: number;
 }
 
 interface RibbonPulse {
@@ -62,6 +64,7 @@ export class RibbonsGenerator implements VisualGenerator {
         direction: Math.sign(state.lastInterval || 1),
         points: [],
         idle: false,
+        releaseDrain: 0,
       });
       this.ribbons = this.ribbons.slice(-12);
     }
@@ -80,10 +83,12 @@ export class RibbonsGenerator implements VisualGenerator {
     const { width, height, time, delta, params, music, dynamics } = frame;
     const profile = harmonyProfile(music.chord.quality);
     const motionScale = params.reducedMotion ? 0.36 : 1;
+    const voicesByNote = new Map<number, VisualNoteVoice>();
+    for (const voice of frame.voices) voicesByNote.set(voice.note, voice);
     const maxPoints = qualityCount(
       frame,
       Math.round(36 + params.trails * 1.25),
-      32,
+      20,
     );
 
     context.save();
@@ -92,9 +97,7 @@ export class RibbonsGenerator implements VisualGenerator {
       const ribbon = this.ribbons[index];
       const force = velocityCurve(ribbon.velocity);
       const register = registerPosition(ribbon.note);
-      const voice = frame.voices.find(
-        (candidate) => candidate.note === ribbon.note,
-      );
+      const voice = voicesByNote.get(ribbon.note);
       const held = voice?.phase === "attack" || voice?.phase === "held";
       const sustained = voice?.phase === "sustain";
       const voiceEnergy = voice?.energy ?? 0;
@@ -136,23 +139,43 @@ export class RibbonsGenerator implements VisualGenerator {
         targetY,
         1 - Math.exp(-delta * (0.004 + params.responsiveness * 0.00006)),
       );
-      ribbon.points.push({
-        x: ribbon.headX * width,
-        y: ribbon.headY * height,
-        energy:
-          clamp(
-            0.18 + force * 0.42 + dynamics.attack * 0.35 + dynamics.held * 0.24,
-            0,
-            1,
-          ) *
-          clamp(
-            0.38 +
-              voiceEnergy * 0.62 +
-              Math.min(0.16, (voice?.heldDuration ?? 0) / 12000),
-            0,
-            1,
-          ),
-      });
+      if (voice?.phase !== "release") {
+        ribbon.releaseDrain = 0;
+        ribbon.points.push({
+          x: ribbon.headX * width,
+          y: ribbon.headY * height,
+          energy:
+            clamp(
+              0.18 +
+                force * 0.42 +
+                dynamics.attack * 0.35 +
+                dynamics.held * 0.24 +
+                (voice?.development ?? 0) * 0.12 +
+                (voice?.structuralLayer ?? 0) * 0.12,
+              0,
+              1,
+            ) *
+            clamp(
+              0.38 +
+                voiceEnergy * 0.62 +
+                Math.min(0.16, (voice?.heldDuration ?? 0) / 12000),
+              0,
+              1,
+            ),
+        });
+      } else {
+        ribbon.releaseDrain +=
+          delta *
+          (0.009 + voice.releaseProgress * 0.018 - voice.releaseDepth * 0.006);
+        const drainCount = Math.min(
+          ribbon.points.length,
+          Math.floor(ribbon.releaseDrain),
+        );
+        if (drainCount > 0) {
+          ribbon.points.splice(0, drainCount);
+          ribbon.releaseDrain -= drainCount;
+        }
+      }
       if (ribbon.points.length > maxPoints)
         ribbon.points.splice(0, ribbon.points.length - maxPoints);
       ribbon.life -=
@@ -160,7 +183,9 @@ export class RibbonsGenerator implements VisualGenerator {
         (sustained || music.sustain
           ? 0.000025
           : voice?.phase === "release"
-            ? 0.000075 * (1.2 - voice.release)
+            ? 0.00042 *
+              (0.75 + voice.releaseProgress * 0.6) *
+              (1 - voice.releaseDepth * 0.38)
             : ribbon.idle
               ? 0.000002
               : 0.00013);
@@ -168,7 +193,7 @@ export class RibbonsGenerator implements VisualGenerator {
         ribbon.life = Math.min(1, ribbon.life + 0.012 + voiceEnergy * 0.012);
 
       if (ribbon.points.length < 4) continue;
-      this.drawRibbon(context, frame, ribbon, index, profile);
+      this.drawRibbon(context, frame, ribbon, index, profile, voice);
     }
     this.drawPulses(context, frame);
     context.restore();
@@ -208,6 +233,7 @@ export class RibbonsGenerator implements VisualGenerator {
         direction: Math.sign(frame.music.lastInterval || 1),
         points: [],
         idle: false,
+        releaseDrain: 0,
       });
     }
     this.ribbons = this.ribbons.slice(-12);
@@ -219,13 +245,18 @@ export class RibbonsGenerator implements VisualGenerator {
     ribbon: Ribbon,
     index: number,
     profile: ReturnType<typeof harmonyProfile>,
+    voice?: VisualNoteVoice,
   ): void {
     const force = velocityCurve(ribbon.velocity);
     const color = noteColor(frame, ribbon.note, index * 0.035);
     const life = clamp(ribbon.life, 0, 1);
     const strandCount = qualityCount(
       frame,
-      2 + Math.min(3, frame.music.notes.length) + profile.layerBonus,
+      2 +
+        Math.min(3, frame.music.notes.length) +
+        profile.layerBonus +
+        Math.round(voice?.development ?? 0) +
+        Math.round(voice?.structuralLayer ?? 0),
       2,
     );
 
@@ -278,8 +309,14 @@ export class RibbonsGenerator implements VisualGenerator {
         alpha,
       );
       context.lineWidth = broad
-        ? 6 + force * 5
-        : 0.7 + force * 1.8 + (strand === 0 ? 0.5 : 0);
+        ? 6 +
+          force * 5 +
+          (voice?.development ?? 0) * 2 +
+          (voice?.structuralLayer ?? 0) * 2.5
+        : 0.7 +
+          force * 1.8 +
+          (strand === 0 ? 0.5 : 0) +
+          (voice?.development ?? 0) * 0.35;
       context.stroke();
     }
 
@@ -345,6 +382,7 @@ export class RibbonsGenerator implements VisualGenerator {
       direction: 1,
       points: [],
       idle: true,
+      releaseDrain: 0,
     });
   }
 

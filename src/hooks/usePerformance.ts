@@ -6,6 +6,7 @@ import {
   applySustain,
   createHeldNoteState,
   releaseSource,
+  sustainSourcesActive,
 } from "../music/heldNotes";
 import type { DetectedChord, NoteEvent, NoteSource } from "../types";
 
@@ -15,6 +16,10 @@ export function usePerformance(preferFlats: boolean) {
     detectChord([]),
   );
   const analyzer = useRef(new MusicalAnalyzer());
+  const physicalSustainRef = useRef(false);
+  const simulatedSustainRef = useRef(false);
+  const [physicalSustain, setPhysicalSustainState] = useState(false);
+  const [simulatedSustain, setSimulatedSustainState] = useState(false);
 
   const sendEvent = useCallback((event: NoteEvent) => {
     if (event.type === "noteon" && event.velocity > 0)
@@ -50,10 +55,28 @@ export function usePerformance(preferFlats: boolean) {
       }),
     [sendEvent],
   );
-  const sustain = useCallback(
-    (down: boolean) =>
-      setHeldState((state) => applySustain(state, down, performance.now())),
-    [],
+  const applyCombinedSustain = useCallback(() => {
+    const down = sustainSourcesActive(
+      physicalSustainRef.current,
+      simulatedSustainRef.current,
+    );
+    setHeldState((state) => applySustain(state, down, performance.now()));
+  }, []);
+  const setPhysicalSustain = useCallback(
+    (down: boolean) => {
+      physicalSustainRef.current = down;
+      setPhysicalSustainState(down);
+      applyCombinedSustain();
+    },
+    [applyCombinedSustain],
+  );
+  const setSimulatedSustain = useCallback(
+    (down: boolean) => {
+      simulatedSustainRef.current = down;
+      setSimulatedSustainState(down);
+      applyCombinedSustain();
+    },
+    [applyCombinedSustain],
   );
   const clearSource = useCallback(
     (source: NoteSource) =>
@@ -62,6 +85,10 @@ export function usePerformance(preferFlats: boolean) {
   );
   const clearAll = useCallback(() => {
     analyzer.current.reset();
+    physicalSustainRef.current = false;
+    simulatedSustainRef.current = false;
+    setPhysicalSustainState(false);
+    setSimulatedSustainState(false);
     setHeldState(createHeldNoteState());
   }, []);
 
@@ -92,5 +119,16 @@ export function usePerformance(preferFlats: boolean) {
     [notes, heldState.sustain, heldState.releases, preferFlats, stableChord],
   );
 
-  return { music, noteOn, noteOff, sustain, sendEvent, clearSource, clearAll };
+  return {
+    music,
+    noteOn,
+    noteOff,
+    setPhysicalSustain,
+    setSimulatedSustain,
+    physicalSustain,
+    simulatedSustain,
+    sendEvent,
+    clearSource,
+    clearAll,
+  };
 }

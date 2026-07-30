@@ -134,6 +134,7 @@ export interface VisualDynamics {
 
 export interface RenderMetrics {
   fps: number;
+  frameCostMs: number;
   activeElements: number;
   qualityScale: number;
   qualityLabel: string;
@@ -144,6 +145,13 @@ export interface RenderMetrics {
   heldEnergy: number;
   releaseEnergy: number;
   sustainEnergy: number;
+  attackingNotes: number;
+  heldPhaseNotes: number;
+  sustainedNotes: number;
+  releasingNotes: number;
+  longestHeldDuration: number;
+  simulatedSustain: boolean;
+  physicalSustain: boolean;
 }
 
 export interface ColorPalette {
@@ -211,4 +219,8 @@ export interface VisualNoteVoice {
   release: number;
   sustain: number;
   energy: number;
+  development: number;
+  structuralLayer: number;
+  releaseProgress: number;
+  releaseDepth: number;
 }

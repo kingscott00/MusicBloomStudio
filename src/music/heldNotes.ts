@@ -10,6 +10,13 @@ export function createHeldNoteState(): HeldNoteState {
   return { notes: new Map(), sustain: false, releases: [] };
 }
 
+export function sustainSourcesActive(
+  physical: boolean,
+  simulated: boolean,
+): boolean {
+  return physical || simulated;
+}
+
 export function applyNoteEvent(
   state: HeldNoteState,
   event: NoteEvent,

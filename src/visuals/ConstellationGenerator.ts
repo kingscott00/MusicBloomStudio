@@ -3,6 +3,7 @@ import type {
   MusicalState,
   VisualFrame,
   VisualGenerator,
+  VisualNoteVoice,
 } from "../types";
 import { rgba } from "../utils/color";
 import { clamp, hashNoise, lerp } from "../utils/math";
@@ -35,12 +36,20 @@ interface StarPulse {
   velocity: number;
 }
 
+interface PositionedStar {
+  star: Star;
+  voice?: VisualNoteVoice;
+  x: number;
+  y: number;
+}
+
 export class ConstellationGenerator implements VisualGenerator {
   readonly mode = "constellation" as const;
   private stars: Star[] = [];
   private pulses: StarPulse[] = [];
   private lastChord = "";
   private reorganize = 0;
+  private idleSeeded = false;
 
   noteTriggered(note: HeldNote, state: MusicalState): void {
     const existing = this.stars.find(
@@ -91,8 +100,11 @@ export class ConstellationGenerator implements VisualGenerator {
   }
 
   render(context: CanvasRenderingContext2D, frame: VisualFrame): void {
+    if (!this.idleSeeded) {
+      this.seedIdleStars();
+      this.idleSeeded = true;
+    }
     this.syncHeldVoices(frame);
-    if (!this.stars.length) this.seedIdleStars();
     if (frame.music.chord.label !== this.lastChord) {
       this.lastChord = frame.music.chord.label;
       this.reorganize = 1;
@@ -109,7 +121,9 @@ export class ConstellationGenerator implements VisualGenerator {
       ? Math.cos(frame.time * 0.000093) * frame.height * 0.028
       : 0;
 
-    const positions = this.stars.map((star) => {
+    const voicesByNote = new Map<number, VisualNoteVoice>();
+    for (const voice of frame.voices) voicesByNote.set(voice.note, voice);
+    const positions: PositionedStar[] = this.stars.map((star) => {
       const settle =
         1 -
         Math.exp(
@@ -120,9 +134,7 @@ export class ConstellationGenerator implements VisualGenerator {
         );
       star.x = lerp(star.x, star.targetX, settle);
       star.y = lerp(star.y, star.targetY, settle);
-      const voice = frame.voices.find(
-        (candidate) => candidate.note === star.note,
-      );
+      const voice = voicesByNote.get(star.note);
       if (!star.idle && voice) {
         if (voice.phase === "release") {
           star.strength = lerp(
@@ -140,18 +152,25 @@ export class ConstellationGenerator implements VisualGenerator {
         }
       }
       const parallax = 0.6 + registerPosition(star.note) * 0.7;
+      const releaseDrift =
+        (voice?.releaseProgress ?? 0) *
+        (0.018 + (voice?.releaseDepth ?? 0) * 0.055);
+      const releaseAngle = star.seed * 0.37;
       return {
         star,
+        voice,
         x:
           star.x * frame.width +
           driftX * parallax +
           Math.sin(frame.time * 0.00015 * motionScale + star.seed) *
-            (2 + profile.float * 7),
+            (2 + profile.float * 7) +
+          Math.cos(releaseAngle) * frame.width * releaseDrift,
         y:
           star.y * frame.height +
           driftY * parallax +
           Math.cos(frame.time * 0.00012 * motionScale + star.seed) *
-            (2 + profile.float * 5),
+            (2 + profile.float * 5) +
+          Math.sin(releaseAngle) * frame.height * releaseDrift,
       };
     });
 
@@ -191,10 +210,13 @@ export class ConstellationGenerator implements VisualGenerator {
   private drawConnections(
     context: CanvasRenderingContext2D,
     frame: VisualFrame,
-    positions: Array<{ star: Star; x: number; y: number }>,
+    positions: PositionedStar[],
     profile: ReturnType<typeof harmonyProfile>,
   ): void {
-    const maxStars = qualityCount(frame, positions.length, 8);
+    const maxStars = Math.min(
+      positions.length,
+      qualityCount(frame, positions.length, Math.min(8, positions.length)),
+    );
     const maxDistance =
       Math.min(frame.width, frame.height) *
       (0.16 +
@@ -254,13 +276,12 @@ export class ConstellationGenerator implements VisualGenerator {
   private drawStars(
     context: CanvasRenderingContext2D,
     frame: VisualFrame,
-    positions: Array<{ star: Star; x: number; y: number }>,
+    positions: PositionedStar[],
     profile: ReturnType<typeof harmonyProfile>,
   ): void {
-    for (const { star, x, y } of positions) {
+    for (const { star, voice, x, y } of positions) {
       star.pulse *= Math.exp(-frame.delta / 300);
-      if (!star.idle && !frame.voices.some((voice) => voice.note === star.note))
-        star.strength *= Math.exp(-frame.delta / 2400);
+      if (!star.idle && !voice) star.strength *= Math.exp(-frame.delta / 1200);
       const force = clamp(star.strength, 0.08, 2);
       const twinkle =
         0.86 +
@@ -270,7 +291,10 @@ export class ConstellationGenerator implements VisualGenerator {
         (1.4 +
           force * 2.7 +
           star.pulse * (4 + star.repetitions * 0.55) +
-          frame.dynamics.attack * 1.5) *
+          frame.dynamics.attack * 1.5 +
+          (voice?.development ?? 0) * 2.2 +
+          (voice?.structuralLayer ?? 0) * 2.8) *
+        (1 - (voice?.releaseProgress ?? 0) * 0.48) *
         twinkle;
       const color = noteColor(frame, star.note);
       drawSoftPoint(
@@ -316,6 +340,35 @@ export class ConstellationGenerator implements VisualGenerator {
         context.lineWidth = 0.55;
         context.stroke();
       }
+      if ((voice?.development ?? 0) > 0.08 && !star.idle) {
+        const orbitCount = (voice?.structuralLayer ?? 0) > 0.45 ? 2 : 1;
+        for (let orbit = 0; orbit < orbitCount; orbit += 1) {
+          context.save();
+          context.translate(x, y);
+          context.rotate(
+            star.seed +
+              orbit * 1.4 +
+              frame.time * 0.00018 * (orbit % 2 ? -1 : 1),
+          );
+          context.scale(1, 0.42 + orbit * 0.16);
+          context.beginPath();
+          context.arc(
+            0,
+            0,
+            radius * (2.2 + orbit * 0.85 + (voice?.development ?? 0) * 0.7),
+            0,
+            Math.PI * 2,
+          );
+          context.strokeStyle = rgba(
+            color,
+            (voice?.development ?? 0) *
+              (0.09 + (voice?.structuralLayer ?? 0) * 0.07),
+          );
+          context.lineWidth = 0.5;
+          context.stroke();
+          context.restore();
+        }
+      }
     }
   }
 
@@ -326,7 +379,7 @@ export class ConstellationGenerator implements VisualGenerator {
     for (const pulse of this.pulses) {
       const force = velocityCurve(pulse.velocity);
       pulse.radius += frame.delta * (0.04 + force * 0.14);
-      pulse.life -= frame.delta * 0.00085;
+      pulse.life -= frame.delta * 0.0013;
       const x = pulse.x * frame.width;
       const y = pulse.y * frame.height;
       context.beginPath();
@@ -426,6 +479,7 @@ export class ConstellationGenerator implements VisualGenerator {
     this.stars = [];
     this.pulses = [];
     this.reorganize = 0;
+    this.idleSeeded = false;
   }
 
   getActiveCount(): number {

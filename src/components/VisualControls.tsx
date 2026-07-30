@@ -129,6 +129,10 @@ export function VisualControls({
               <div className="metrics-grid" aria-live="polite">
                 <Metric label="FPS" value={String(metrics.fps)} />
                 <Metric
+                  label="Frame cost"
+                  value={`${metrics.frameCostMs.toFixed(1)} ms`}
+                />
+                <Metric
                   label="Effective quality"
                   value={metrics.qualityLabel}
                 />
@@ -162,6 +166,25 @@ export function VisualControls({
                 <Metric
                   label="Sustain"
                   value={metrics.sustainEnergy.toFixed(2)}
+                />
+                <Metric
+                  label="Phases"
+                  value={`${metrics.attackingNotes}A · ${metrics.heldPhaseNotes}H · ${metrics.sustainedNotes}S · ${metrics.releasingNotes}R`}
+                />
+                <Metric
+                  label="Longest hold"
+                  value={`${(metrics.longestHeldDuration / 1000).toFixed(1)}s`}
+                />
+                <Metric
+                  label="Pedal sources"
+                  value={
+                    [
+                      metrics.physicalSustain && "MIDI",
+                      metrics.simulatedSustain && "Space",
+                    ]
+                      .filter(Boolean)
+                      .join(" + ") || "Off"
+                  }
                 />
               </div>
             )}

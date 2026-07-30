@@ -4,6 +4,7 @@ import {
   applySustain,
   createHeldNoteState,
   releaseSource,
+  sustainSourcesActive,
 } from "./heldNotes";
 import type { NoteEvent } from "../types";
 
@@ -68,5 +69,12 @@ describe("held note state", () => {
 
     expect([...state.notes.keys()]).toEqual([59, 66]);
     expect(state.releases.at(-1)?.note).toBe(63);
+  });
+
+  it("keeps sustain active while either the MIDI pedal or Spacebar is down", () => {
+    expect(sustainSourcesActive(false, false)).toBe(false);
+    expect(sustainSourcesActive(true, false)).toBe(true);
+    expect(sustainSourcesActive(false, true)).toBe(true);
+    expect(sustainSourcesActive(true, true)).toBe(true);
   });
 });

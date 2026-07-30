@@ -17,8 +17,8 @@ describe("per-note visual envelopes", () => {
     let tap = applyNoteEvent(createHeldNoteState(), noteEvent("noteon", 0));
     tap = applyNoteEvent(tap, noteEvent("noteoff", 50));
     const tapVoice = calculateVisualVoices(
-      createNoteLifecycles([...tap.notes.values()], tap.releases, 2000),
-      2000,
+      createNoteLifecycles([...tap.notes.values()], tap.releases, 200),
+      200,
     )[0];
 
     const held = applyNoteEvent(createHeldNoteState(), noteEvent("noteon", 0));
@@ -52,7 +52,7 @@ describe("per-note visual envelopes", () => {
     )[0];
 
     expect(released.phase).toBe("release");
-    expect(released.release).toBeGreaterThan(0.5);
+    expect(released.release).toBeGreaterThan(0.35);
   });
 
   it("adds a chord tone without replacing existing visual voices", () => {
@@ -81,5 +81,48 @@ describe("per-note visual envelopes", () => {
     expect(triad.map((voice) => voice.id)).toEqual(
       expect.arrayContaining(dyad.map((voice) => voice.id)),
     );
+  });
+
+  it("develops held notes in distinct 100 ms, 500 ms, two-second, and five-second stages", () => {
+    const held = applyNoteEvent(createHeldNoteState(), noteEvent("noteon", 0));
+    const lifecycles = createNoteLifecycles(
+      [...held.notes.values()],
+      held.releases,
+      5000,
+    );
+    const at = (milliseconds: number) =>
+      calculateVisualVoices(lifecycles, milliseconds)[0];
+
+    expect(at(100).phase).toBe("attack");
+    expect(at(100).development).toBe(0);
+    expect(at(500).development).toBeGreaterThan(0.3);
+    expect(at(500).structuralLayer).toBe(0);
+    expect(at(2000).development).toBe(1);
+    expect(at(2000).structuralLayer).toBeGreaterThan(0.15);
+    expect(at(2000).structuralLayer).toBeLessThan(0.35);
+    expect(at(5000).structuralLayer).toBe(1);
+    expect(at(5000).hold).toBeGreaterThan(at(500).hold);
+  });
+
+  it("gives short taps a faster, shallower release than developed notes", () => {
+    const releasedVoice = (heldFor: number, releaseAge: number) => {
+      let state = applyNoteEvent(createHeldNoteState(), noteEvent("noteon", 0));
+      state = applyNoteEvent(state, noteEvent("noteoff", heldFor));
+      return calculateVisualVoices(
+        createNoteLifecycles(
+          [...state.notes.values()],
+          state.releases,
+          heldFor + releaseAge,
+        ),
+        heldFor + releaseAge,
+      )[0];
+    };
+
+    const tap = releasedVoice(100, 250);
+    const longHold = releasedVoice(2000, 250);
+    expect(tap.releaseDepth).toBeLessThan(0.1);
+    expect(tap.releaseProgress).toBeGreaterThan(longHold.releaseProgress);
+    expect(longHold.releaseDepth).toBeGreaterThan(0.9);
+    expect(longHold.release).toBeGreaterThan(tap.release);
   });
 });

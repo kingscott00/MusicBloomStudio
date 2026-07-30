@@ -314,23 +314,22 @@ export function voiceComposition(voices: VisualNoteVoice[]): {
   energy: number;
   count: number;
 } {
-  const sounding = voices.filter(
-    (voice) => voice.phase !== "release" || voice.release > 0.08,
-  );
-  if (!sounding.length) return { pitch: 0, register: 0.5, energy: 0, count: 0 };
-  const weight = sounding.reduce((sum, voice) => sum + voice.energy, 0);
+  let weight = 0;
+  let pitch = 0;
+  let register = 0;
+  let count = 0;
+  for (const voice of voices) {
+    if (voice.phase === "release" && voice.release <= 0.08) continue;
+    weight += voice.energy;
+    pitch += pitchPosition(voice.note) * voice.energy;
+    register += registerPosition(voice.note) * voice.energy;
+    count += 1;
+  }
+  if (!count) return { pitch: 0, register: 0.5, energy: 0, count: 0 };
   return {
-    pitch:
-      sounding.reduce(
-        (sum, voice) => sum + pitchPosition(voice.note) * voice.energy,
-        0,
-      ) / Math.max(0.001, weight),
-    register:
-      sounding.reduce(
-        (sum, voice) => sum + registerPosition(voice.note) * voice.energy,
-        0,
-      ) / Math.max(0.001, weight),
-    energy: clamp(weight / Math.sqrt(sounding.length), 0, 1.6),
-    count: sounding.length,
+    pitch: pitch / Math.max(0.001, weight),
+    register: register / Math.max(0.001, weight),
+    energy: clamp(weight / Math.sqrt(count), 0, 1.6),
+    count,
   };
 }
