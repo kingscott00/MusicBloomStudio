@@ -100,7 +100,17 @@ export interface MusicalState {
   noteLifecycles: NoteLifecycle[];
 }
 
-export type VisualMode = "bloom" | "orbit" | "ribbons" | "constellation";
+export type VisualMode =
+  | "bloom"
+  | "orbit"
+  | "ribbons"
+  | "constellation"
+  | "jellyfish"
+  | "geometry"
+  | "nebula"
+  | "forest"
+  | "metal"
+  | "portal";
 export type RenderQuality = "auto" | "high" | "balanced" | "low";
 
 export interface VisualParameters {
@@ -119,6 +129,7 @@ export interface VisualParameters {
   idle: number;
   reducedMotion: boolean;
   quality: RenderQuality;
+  recipeSeed: number;
 }
 
 export interface VisualDynamics {

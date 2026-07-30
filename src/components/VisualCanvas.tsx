@@ -15,7 +15,13 @@ import { rgba } from "../utils/color";
 import { clamp, lerp } from "../utils/math";
 import { BloomGenerator } from "../visuals/BloomGenerator";
 import { ConstellationGenerator } from "../visuals/ConstellationGenerator";
+import { ForestGenerator } from "../visuals/ForestGenerator";
+import { GeometryGenerator } from "../visuals/GeometryGenerator";
+import { JellyfishGenerator } from "../visuals/JellyfishGenerator";
+import { MetalGenerator } from "../visuals/MetalGenerator";
+import { NebulaGenerator } from "../visuals/NebulaGenerator";
 import { OrbitGenerator } from "../visuals/OrbitGenerator";
+import { PortalGenerator } from "../visuals/PortalGenerator";
 import { RibbonsGenerator } from "../visuals/RibbonsGenerator";
 
 export interface VisualCanvasHandle {
@@ -56,6 +62,12 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
       orbit: new OrbitGenerator(),
       ribbons: new RibbonsGenerator(),
       constellation: new ConstellationGenerator(),
+      jellyfish: new JellyfishGenerator(),
+      geometry: new GeometryGenerator(),
+      nebula: new NebulaGenerator(),
+      forest: new ForestGenerator(),
+      metal: new MetalGenerator(),
+      portal: new PortalGenerator(),
     });
     musicRef.current = music;
     paramsRef.current = params;

@@ -1,6 +1,6 @@
 # Music Bloom Studio
 
-Music Bloom Studio is a browser-based generative-art instrument. Play a connected MIDI keyboard—or the built-in mouse, touch, and computer keyboard piano—and notes become evolving flowers, orbital systems, ribbons, and constellations.
+Music Bloom Studio is a browser-based generative-art instrument. Play a connected MIDI keyboard—or the built-in mouse, touch, and computer keyboard piano—and notes become flowers, orbital systems, ribbons, constellations, jellyfish, mandalas, nebulae, fractal forests, liquid metal, and dimensional portals.
 
 The app is local-first: it has no backend, account, analytics, or external API. Visual settings, the preferred MIDI device, and custom presets are stored in browser `localStorage`.
 
@@ -50,6 +50,12 @@ A W S E D F T G Y H U J K
 
 The row maps chromatically from C4 through C5.
 
+Use **Surprise Me** to create a curated, deterministic visual recipe. The recipe
+number is shown beside the button and is retained when the result is saved as a
+custom preset. Enter a recipe number and choose **Replay** to reproduce it.
+Randomization uses experience-specific ranges and keeps the current quality and
+reduced-motion preferences.
+
 ## Musical mapping
 
 - Pitch class moves through the selected palette.
@@ -83,7 +89,7 @@ src/
   presets/      Palettes and local preset persistence
   types/        Shared strict TypeScript contracts
   utils/        Color and math helpers
-  visuals/      Four generators behind a shared interface
+  visuals/      Ten generators behind a shared interface
 ```
 
 The animation loop and generator state live outside React rendering. React updates only when musical or interface state changes. Canvas sizing is handled with `ResizeObserver`, pixel density is capped, hidden tabs stop drawing, and all MIDI and animation listeners are cleaned up.
@@ -100,7 +106,7 @@ generator detail when active-frame performance falls, caps fullscreen
 resolution more conservatively, and reduces calm idle scenes to approximately
 30 FPS (18 FPS with reduced motion). Per-particle radial gradients were replaced
 with cheaper layered light primitives, and every generator has a bounded
-population. Quality-aware active caps (120/90/60 FPS) also prevent high-refresh
+population. Quality-aware active caps (90/60 FPS) also prevent high-refresh
 displays from doing unnecessary canvas work. The compact Performance &
 Diagnostics section exposes Auto/High/Balanced/Low quality and an optional live
 monitor for renderer statistics, held notes, chord identity, and musical

@@ -19,6 +19,7 @@ import {
   loadCustomPresets,
   saveCustomPresets,
 } from "./presets/presets";
+import { createRandomizedParameters, randomSeed } from "./presets/randomizer";
 import type { Preset, RenderMetrics, VisualParameters } from "./types";
 
 const SETTINGS_KEY = "music-bloom-settings-v1";
@@ -202,6 +203,13 @@ export default function App() {
     canvasRef.current?.reset();
   };
 
+  const randomizeVisuals = (requestedSeed?: number) => {
+    const seed = requestedSeed ?? randomSeed();
+    setParams((current) => createRandomizedParameters(current, seed));
+    setActivePreset("");
+    canvasRef.current?.reset();
+  };
+
   const enterFullscreen = async () => {
     setCleanView(true);
     try {
@@ -315,6 +323,7 @@ export default function App() {
               metrics={renderMetrics}
               diagnosticsOpen={diagnosticsOpen}
               onDiagnosticsChange={setDiagnosticsOpen}
+              onRandomize={randomizeVisuals}
             />
           )}
         </aside>

@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { defaultParams, loadCustomPresets, saveCustomPresets } from "./presets";
+import {
+  builtInPresets,
+  defaultParams,
+  loadCustomPresets,
+  saveCustomPresets,
+} from "./presets";
 import type { Preset } from "../types";
 
 describe("custom preset persistence", () => {
@@ -25,5 +30,26 @@ describe("custom preset persistence", () => {
   it("survives invalid stored JSON", () => {
     localStorage.setItem("music-bloom-custom-presets-v1", "not json");
     expect(loadCustomPresets()).toEqual([]);
+  });
+
+  it("includes curated presets for every expanded visual world", () => {
+    const modes = new Set(builtInPresets.map((preset) => preset.params.mode));
+    expect(modes).toEqual(
+      new Set([
+        "bloom",
+        "orbit",
+        "ribbons",
+        "constellation",
+        "jellyfish",
+        "geometry",
+        "nebula",
+        "forest",
+        "metal",
+        "portal",
+      ]),
+    );
+    expect(new Set(builtInPresets.map((preset) => preset.id)).size).toBe(
+      builtInPresets.length,
+    );
   });
 });

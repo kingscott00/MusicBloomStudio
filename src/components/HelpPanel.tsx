@@ -58,13 +58,15 @@ export function HelpPanel({ open, onClose }: HelpPanelProps) {
           </HelpSection>
           <HelpSection number="04" title="Sustain & lingering forms">
             A MIDI sustain pedal keeps released notes alive in the harmony and
-            lets particles, ribbons, and petals linger. Releasing the pedal
-            clears notes that are no longer physically held.
+            lets particles, ribbons, and petals linger. Without a pedal, hold
+            <b> Space</b> while playing computer or on-screen notes. Releasing
+            the pedal or Space clears notes that are no longer physically held.
           </HelpSection>
           <HelpSection number="05" title="Make it yours">
-            Try the four visual modes, then tune density, movement, symmetry,
-            trails, glow, and response. Curated presets are protected; your
-            custom presets are saved locally and can be renamed or deleted.
+            Explore ten visual worlds, or choose <b>Surprise Me</b> for a
+            curated recipe. Tune density, movement, symmetry, trails, glow, and
+            response. Curated presets are protected; randomized and custom
+            results can be saved locally, renamed, or deleted.
           </HelpSection>
           <HelpSection number="06" title="If a device is missing">
             Confirm the controller is powered on and connected before granting

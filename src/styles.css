@@ -515,11 +515,124 @@ select,
   color: white;
 }
 
+.randomizer-block {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 13px 0 12px;
+  padding: 8px;
+  border: 1px solid rgba(166, 203, 255, 0.18);
+  border-radius: 11px;
+  background:
+    radial-gradient(
+      circle at 15% 50%,
+      rgba(125, 227, 218, 0.11),
+      transparent 46%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(107, 139, 214, 0.11),
+      rgba(151, 104, 202, 0.08)
+    );
+}
+
+.surprise-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(191, 220, 255, 0.34);
+  border-radius: 8px;
+  color: #f0f8ff;
+  background: linear-gradient(
+    135deg,
+    rgba(108, 176, 208, 0.27),
+    rgba(137, 103, 201, 0.28)
+  );
+  box-shadow: 0 0 18px rgba(111, 194, 207, 0.08);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.025em;
+}
+
+.surprise-button:hover {
+  border-color: rgba(207, 233, 255, 0.58);
+  background: linear-gradient(
+    135deg,
+    rgba(114, 198, 220, 0.34),
+    rgba(154, 114, 220, 0.35)
+  );
+}
+
+.recipe-form {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 1fr auto;
+  gap: 3px 5px;
+  min-width: 0;
+}
+
+.recipe-form label {
+  grid-column: 1 / -1;
+  color: #77869c;
+  font-size: 7px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.recipe-form input {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid rgba(180, 207, 235, 0.16);
+  border-radius: 6px;
+  color: #91a0b5;
+  background: rgba(4, 8, 14, 0.48);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 7px;
+  letter-spacing: 0.025em;
+}
+
+.recipe-form button {
+  padding: 0 6px;
+  border: 1px solid rgba(180, 207, 235, 0.16);
+  border-radius: 6px;
+  color: #9ca9bb;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 7px;
+}
+
+.experience-browser {
+  margin-bottom: 12px;
+}
+
+.experience-family {
+  display: block;
+  margin: 10px 1px 5px;
+  color: #6f7c91;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+}
+
 .mode-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
-  margin: 14px 0 12px;
+  margin: 0;
+}
+
+.worlds-grid {
+  grid-template-columns: 1fr;
+}
+
+.worlds-grid .mode-button {
+  min-height: 43px;
+  padding: 7px 10px;
 }
 
 .mode-button {

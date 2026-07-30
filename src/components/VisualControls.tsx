@@ -1,12 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { pitchClassName } from "../music/notes";
 import { palettes } from "../presets/palettes";
-import type {
-  RenderMetrics,
-  RenderQuality,
-  VisualMode,
-  VisualParameters,
-} from "../types";
+import { experiences } from "../visuals/experiences";
+import type { RenderMetrics, RenderQuality, VisualParameters } from "../types";
 import { Icon } from "./Icon";
 
 interface VisualControlsProps {
@@ -16,14 +12,8 @@ interface VisualControlsProps {
   metrics: RenderMetrics;
   diagnosticsOpen: boolean;
   onDiagnosticsChange: (open: boolean) => void;
+  onRandomize: (seed?: number) => void;
 }
-
-const modes: Array<{ id: VisualMode; label: string; description: string }> = [
-  { id: "bloom", label: "Bloom", description: "Petals & tendrils" },
-  { id: "orbit", label: "Orbit", description: "Moons & rings" },
-  { id: "ribbons", label: "Ribbons", description: "Flowing strands" },
-  { id: "constellation", label: "Stars", description: "Points & paths" },
-];
 
 const sliders: Array<{
   key: keyof VisualParameters;
@@ -50,8 +40,20 @@ export function VisualControls({
   metrics,
   diagnosticsOpen,
   onDiagnosticsChange,
+  onRandomize,
 }: VisualControlsProps) {
   const [performanceOpen, setPerformanceOpen] = useState(true);
+  const [recipeInput, setRecipeInput] = useState(String(params.recipeSeed));
+  useEffect(
+    () => setRecipeInput(String(params.recipeSeed)),
+    [params.recipeSeed],
+  );
+  const replayRecipe = () => {
+    const seed = Number(recipeInput);
+    if (Number.isInteger(seed) && seed >= 0 && seed <= 999_999_999)
+      onRandomize(seed);
+    else setRecipeInput(String(params.recipeSeed));
+  };
   return (
     <section
       className="controls-card glass-card"
@@ -68,17 +70,66 @@ export function VisualControls({
       <h2 id="controls-heading" className="sr-only">
         Visual controls
       </h2>
-      <div className="mode-grid">
-        {modes.map((mode) => (
-          <button
-            className={`mode-button ${params.mode === mode.id ? "active" : ""}`}
-            onClick={() => onChange({ mode: mode.id })}
-            key={mode.id}
-          >
-            <b>{mode.label}</b>
-            <small>{mode.description}</small>
+      <div className="randomizer-block">
+        <button
+          className="surprise-button"
+          onClick={() => onRandomize()}
+          title="Create a curated visual recipe"
+        >
+          <span aria-hidden="true">✦</span>
+          Surprise Me
+        </button>
+        <form
+          className="recipe-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            replayRecipe();
+          }}
+        >
+          <label htmlFor="recipe-seed">Recipe</label>
+          <input
+            id="recipe-seed"
+            aria-label="Recipe seed"
+            inputMode="numeric"
+            value={recipeInput}
+            onChange={(event) =>
+              setRecipeInput(event.target.value.replace(/\D/g, "").slice(0, 9))
+            }
+          />
+          <button type="submit" title="Replay this recipe">
+            Replay
           </button>
-        ))}
+        </form>
+      </div>
+      <div className="experience-browser">
+        <span className="experience-family">FOUNDATIONS</span>
+        <div className="mode-grid foundation-grid">
+          {experiences
+            .filter((experience) => experience.family === "foundations")
+            .map((experience) => (
+              <ExperienceButton
+                key={experience.id}
+                active={params.mode === experience.id}
+                name={experience.name}
+                description={experience.description}
+                onClick={() => onChange({ mode: experience.id })}
+              />
+            ))}
+        </div>
+        <span className="experience-family">VISUAL WORLDS</span>
+        <div className="mode-grid worlds-grid">
+          {experiences
+            .filter((experience) => experience.family === "worlds")
+            .map((experience) => (
+              <ExperienceButton
+                key={experience.id}
+                active={params.mode === experience.id}
+                name={experience.name}
+                description={experience.description}
+                onClick={() => onChange({ mode: experience.id })}
+              />
+            ))}
+        </div>
       </div>
       <label className="field-label">
         Color palette
@@ -223,6 +274,29 @@ export function VisualControls({
         />
       </div>
     </section>
+  );
+}
+
+function ExperienceButton({
+  active,
+  name,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  name: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`mode-button ${active ? "active" : ""}`}
+      onClick={onClick}
+      aria-pressed={active}
+    >
+      <b>{name}</b>
+      <small>{description}</small>
+    </button>
   );
 }
 
