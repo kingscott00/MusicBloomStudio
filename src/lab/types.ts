@@ -28,6 +28,7 @@ export type ModulationSource =
 export type LfoShape = "sine" | "triangle" | "saw" | "square" | "smooth-random";
 export type ModulationPolarity = "unipolar" | "bipolar";
 export type MutationStrength = "subtle" | "moderate" | "wild";
+export type SurpriseScope = "current-scene" | "full-instrument";
 
 export interface MusicalResponseSettings {
   velocity: number;
@@ -91,7 +92,15 @@ export interface LaboratoryState {
   mutationSeed: number;
   mutationIndex: number;
   mutationStrength: MutationStrength;
+  surpriseSeed: number;
+  surpriseScope: SurpriseScope;
   overlayEnabled: boolean;
+}
+
+export interface PalettePreview {
+  palette: ColorPalette;
+  scene: "A" | "B";
+  sourcePaletteId: string;
 }
 
 export interface LaboratoryRenderState {
@@ -102,6 +111,7 @@ export interface LaboratoryRenderState {
   macros: MacroControl[];
   modulationRoutes: ModulationRoute[];
   customPalettes: ColorPalette[];
+  palettePreview?: PalettePreview | null;
 }
 
 export interface VisualInstrument {

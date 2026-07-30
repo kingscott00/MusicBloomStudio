@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { defaultRandomizerLocks } from "../presets/randomizer";
 import { defaultParams } from "../presets/presets";
 import {
+  applyPaletteEdit,
   captureScene,
   copyScene,
   createHistory,
@@ -57,6 +58,30 @@ describe("laboratory scenes and history", () => {
       history = pushHistory(history, { value: index }, `Edit ${index}`);
     expect(history.entries).toHaveLength(50);
     expect(history.entries.at(-1)?.state.value).toBe(79);
+  });
+
+  it("undoes a confirmed palette session as one complete state change", () => {
+    const state = createLaboratoryState(defaultParams);
+    const original = { laboratory: state, params: defaultParams };
+    const edit = applyPaletteEdit(
+      state,
+      defaultParams,
+      {
+        id: defaultParams.paletteId,
+        name: "Moonlight",
+        colors: ["#ff0000", "#ffffff"],
+        background: "#02030a",
+      },
+      defaultParams.paletteId,
+    );
+    const history = pushHistory(
+      createHistory(original),
+      { laboratory: edit.state, params: edit.params },
+      "Palette color edit",
+    );
+    expect(history.entries).toHaveLength(2);
+    expect(edit.state.customPalettes).toContainEqual(edit.palette);
+    expect(undoHistory(history).state).toEqual(original);
   });
 });
 

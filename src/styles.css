@@ -2100,10 +2100,9 @@ kbd {
   left: 18px;
   min-height: 62px;
   display: grid;
-  grid-template-columns: minmax(230px, 0.8fr) minmax(370px, 1.25fr) minmax(
-      290px,
-      0.9fr
-    );
+  grid-template-columns:
+    minmax(210px, 0.65fr) minmax(300px, 0.9fr)
+    minmax(560px, 1.45fr);
   align-items: center;
   gap: 18px;
   padding: 9px 12px;
@@ -2207,6 +2206,79 @@ kbd {
 
 .lab-toolbar-actions {
   justify-content: flex-end;
+  position: relative;
+  flex-wrap: wrap;
+}
+
+.surprise-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 7px;
+  border-right: 1px solid rgba(205, 220, 255, 0.12);
+}
+
+.surprise-controls select {
+  max-width: 118px;
+  min-height: 32px;
+  border: 1px solid rgba(205, 220, 255, 0.14);
+  border-radius: 8px;
+  color: #cbd4e5;
+  background: #111724;
+}
+
+.surprise-button {
+  border-color: rgba(199, 176, 255, 0.42) !important;
+  color: #f6f1ff !important;
+  background:
+    radial-gradient(
+      circle at 20% 10%,
+      rgba(255, 255, 255, 0.16),
+      transparent 40%
+    ),
+    linear-gradient(135deg, rgba(108, 153, 229, 0.3), rgba(165, 104, 213, 0.3)) !important;
+  box-shadow: 0 0 22px rgba(145, 126, 229, 0.12);
+}
+
+.surprise-recipe {
+  position: relative;
+}
+
+.surprise-recipe > summary {
+  min-width: 92px;
+  padding: 7px 8px;
+  border: 1px solid rgba(205, 220, 255, 0.12);
+  border-radius: 8px;
+  color: #9fabc0;
+  font-size: 0.62rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.surprise-recipe > summary::-webkit-details-marker {
+  display: none;
+}
+
+.surprise-recipe > div {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 9px);
+  right: 0;
+  width: 230px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(205, 220, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(8, 12, 20, 0.97);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.48);
+}
+
+.surprise-recipe small {
+  grid-column: 1 / -1;
+  color: #8f9cb2;
+  line-height: 1.45;
 }
 
 .primary-button {
@@ -2706,6 +2778,7 @@ kbd {
 }
 
 .color-stop-list > div {
+  position: relative;
   display: grid;
   grid-template-columns: 36px 1fr repeat(3, 28px);
   align-items: center;
@@ -2714,12 +2787,15 @@ kbd {
   font-size: 0.63rem;
 }
 
-.color-stop-list input[type="color"] {
+.color-swatch-button {
   width: 36px;
   height: 29px;
   padding: 0;
-  border: 0;
-  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 7px !important;
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.2),
+    0 0 14px rgba(145, 173, 229, 0.08);
 }
 
 .color-stop-list button {
@@ -2736,6 +2812,137 @@ kbd {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
   box-shadow: 0 0 20px rgba(145, 173, 229, 0.08);
+}
+
+.background-color-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 36px 74px;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 0;
+  color: #aeb8ca;
+  font-size: 0.68rem;
+}
+
+.background-color-row code {
+  color: #93a1b6;
+  font-size: 0.64rem;
+}
+
+.palette-color-picker {
+  position: absolute;
+  z-index: 42;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 258px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(205, 220, 255, 0.2);
+  border-radius: 14px;
+  color: #cbd5e8;
+  background: rgba(8, 12, 20, 0.985);
+  box-shadow: 0 24px 66px rgba(0, 0, 0, 0.62);
+}
+
+.picker-heading,
+.picker-swatches,
+.picker-hue,
+.picker-hex,
+.picker-actions {
+  display: flex;
+  align-items: center;
+}
+
+.picker-heading {
+  justify-content: space-between;
+  font-size: 0.7rem;
+}
+
+.picker-swatches {
+  gap: 5px;
+}
+
+.picker-swatches i {
+  width: 24px;
+  height: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 5px;
+}
+
+.picker-saturation {
+  position: relative;
+  height: 142px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9px;
+  outline: none;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.picker-saturation::before,
+.picker-saturation::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.picker-saturation::before {
+  background: linear-gradient(90deg, #fff, transparent);
+}
+
+.picker-saturation::after {
+  background: linear-gradient(0deg, #000, transparent);
+}
+
+.picker-saturation:focus-visible {
+  box-shadow: 0 0 0 2px #a9c1ff;
+}
+
+.picker-cursor {
+  position: absolute;
+  z-index: 2;
+  width: 13px;
+  height: 13px;
+  border: 2px solid white;
+  border-radius: 50%;
+  box-shadow: 0 1px 4px #000;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.picker-hue,
+.picker-hex {
+  gap: 9px;
+  color: #98a6ba;
+  font-size: 0.63rem;
+}
+
+.picker-hue input {
+  flex: 1;
+  accent-color: #a2baff;
+}
+
+.picker-hex input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid rgba(205, 220, 255, 0.14);
+  border-radius: 7px;
+  color: #d9e2f1;
+  background: rgba(255, 255, 255, 0.04);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.picker-hex input[aria-invalid="true"] {
+  border-color: rgba(255, 152, 152, 0.5);
+}
+
+.picker-actions {
+  justify-content: flex-end;
+  gap: 7px;
 }
 
 .lab-performance-strip {
@@ -2898,12 +3105,26 @@ kbd {
   margin-top: 8px;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1250px) {
   .lab-toolbar {
-    grid-template-columns: 1fr 1.4fr;
+    grid-template-columns: minmax(190px, 0.7fr) minmax(310px, 1.2fr) auto;
+    gap: 10px;
   }
 
   .lab-toolbar-actions {
+    display: flex;
+  }
+
+  .lab-toolbar-actions > button {
+    display: none;
+  }
+
+  .surprise-controls {
+    padding-right: 0;
+    border-right: 0;
+  }
+
+  .surprise-recipe {
     display: none;
   }
 
@@ -2932,8 +3153,18 @@ kbd {
     display: none;
   }
 
+  .lab-toolbar-actions {
+    justify-content: stretch;
+  }
+
+  .surprise-controls,
+  .surprise-controls select,
+  .surprise-button {
+    flex: 1;
+  }
+
   .lab-panel {
-    top: 78px;
+    top: 126px;
     right: 8px;
     bottom: 112px;
     width: calc(100vw - 16px);

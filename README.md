@@ -103,11 +103,17 @@ the current design carries into the active edit scene.
 - Use deterministic Subtle, Moderate, or Wild mutation while respecting the
   existing randomizer locks. Undo/redo history is bounded and coalesces rapid
   slider changes.
+- Use **Surprise Me** on only the current scene or generate a complete,
+  performance-ready A/B instrument. Surprise recipes respect visual locks,
+  never overwrite saved instruments, and expose copy, replay, and new-seed
+  controls separately from mutation recipes.
 - Save the full design as a versioned Visual Instrument, or export/import it as
   validated JSON. Curated example instruments demonstrate same-mode morphing,
   cross-experience dissolves, macros, and musical modulation.
 - Build custom two-to-eight-stop palettes with reordering, hue rotation,
-  saturation, brightness, and temperature controls.
+  saturation, brightness, and temperature controls. The in-app HSV editor
+  previews color directly in the artwork while dragging; Done creates one
+  undoable history entry and Cancel restores the original color.
 
 Morph and Macro 1–8 are available to MIDI Learn. Button mappings can move
 between instruments, mutate, or load either scene. A saved instrument can be

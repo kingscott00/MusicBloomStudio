@@ -448,21 +448,23 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
         const primaryScene: LaboratoryScene | null = resolved?.primary ?? null;
         const effectiveParams = primaryScene?.params ?? currentParams;
         const customPalettes = laboratoryState?.customPalettes ?? [];
+        const getRenderedPalette = (paletteId: string) =>
+          laboratoryState?.palettePreview?.sourcePaletteId === paletteId
+            ? laboratoryState.palettePreview.palette
+            : getPalette(paletteId, customPalettes);
         if (!resolved && currentParams.paletteId !== cachedPaletteId) {
           cachedPaletteId = currentParams.paletteId;
           cachedPalette = getPalette(cachedPaletteId, customPalettes);
         }
         let palette = resolved
-          ? getPalette(resolved.primary.params.paletteId, customPalettes)
+          ? getRenderedPalette(resolved.primary.params.paletteId)
           : cachedPalette;
         if (resolved && laboratoryState) {
-          const paletteA = getPalette(
+          const paletteA = getRenderedPalette(
             laboratoryState.sceneA.params.paletteId,
-            customPalettes,
           );
-          const paletteB = getPalette(
+          const paletteB = getRenderedPalette(
             laboratoryState.sceneB.params.paletteId,
-            customPalettes,
           );
           palette = interpolatePalette(paletteA, paletteB, resolved.morph);
         }
@@ -496,7 +498,7 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           const sceneParams = scene?.params ?? currentParams;
           let scenePalette =
             scene && resolved?.dualRender
-              ? getPalette(scene.params.paletteId, customPalettes)
+              ? getRenderedPalette(scene.params.paletteId)
               : palette;
           const scenePaletteOffset = Math.round(
             scene?.advanced["global.palettePosition"] ?? 0,

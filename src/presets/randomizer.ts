@@ -234,7 +234,7 @@ export function createRandomizedParameters(
     symmetry: locks.symmetry ? current.symmetry : choose(constraints.symmetry),
     trails: locks.trails ? current.trails : choose(constraints.trails),
     glow: locks.glow ? current.glow : choose(constraints.glow),
-    bloom: choose(constraints.bloom),
+    bloom: locks.glow ? current.bloom : choose(constraints.bloom),
     responsiveness: choose(constraints.responsiveness),
     background: choose(constraints.background),
     idle: locks.motion ? current.idle : choose(constraints.idle),

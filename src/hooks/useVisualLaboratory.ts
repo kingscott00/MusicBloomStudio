@@ -8,7 +8,10 @@ import type {
   VisualParameters,
 } from "../types";
 import { defaultMacros } from "../lab/definitions";
+import { createSurprise } from "../lab/surprise";
+import { randomSeed } from "../presets/randomizer";
 import {
+  applyPaletteEdit,
   captureScene,
   copyScene,
   createExampleInstruments,
@@ -34,6 +37,8 @@ import type {
   MacroControl,
   ModulationRoute,
   MutationStrength,
+  PalettePreview,
+  SurpriseScope,
   VisualInstrument,
 } from "../lab/types";
 
@@ -61,6 +66,9 @@ export function useVisualLaboratory(
   const [state, setState] = useState(() => loadLaboratoryState(params));
   const [isOpen, setIsOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [palettePreview, setPalettePreview] = useState<PalettePreview | null>(
+    null,
+  );
   const [currentInstrumentId, setCurrentInstrumentId] = useState("");
   const [favoriteInstrumentIds, setFavoriteInstrumentIds] = useState<string[]>(
     () => {
@@ -170,6 +178,7 @@ export function useVisualLaboratory(
       !window.confirm("Leave the Visual Laboratory with unsaved changes?")
     )
       return;
+    setPalettePreview(null);
     setIsOpen(false);
   }, [dirty]);
 
@@ -326,6 +335,29 @@ export function useVisualLaboratory(
     [commit, randomizerLocks],
   );
 
+  const surprise = useCallback(
+    (scope: SurpriseScope, seed = randomSeed()) => {
+      const result = createSurprise(
+        scope,
+        stateRef.current,
+        paramsRef.current,
+        randomizerLocks,
+        seed,
+        stateRef.current.customPalettes.map((palette) => palette.id),
+      );
+      setPalettePreview(null);
+      commit(
+        result.state,
+        result.params,
+        scope === "full-instrument"
+          ? "Surprise full instrument"
+          : "Surprise current scene",
+      );
+      return seed;
+    },
+    [commit, randomizerLocks],
+  );
+
   const applyHistory = useCallback(
     (direction: "undo" | "redo") => {
       const result =
@@ -334,6 +366,7 @@ export function useVisualLaboratory(
           : redoHistory(historyRef.current);
       setHistory(result.history);
       setState(result.state.laboratory);
+      setPalettePreview(null);
       onParamsChange(result.state.params);
       setDirty(true);
     },
@@ -396,6 +429,7 @@ export function useVisualLaboratory(
       )
         return;
       setState(instrument.state);
+      setPalettePreview(null);
       onParamsChange(instrument.state.sceneA.params);
       setCurrentInstrumentId(instrument.id);
       setDirty(false);
@@ -489,6 +523,25 @@ export function useVisualLaboratory(
     [commit],
   );
 
+  const commitPaletteEdit = useCallback(
+    (
+      palette: ColorPalette,
+      sourcePaletteId: string,
+      label = "Palette color edit",
+    ): ColorPalette => {
+      const result = applyPaletteEdit(
+        stateRef.current,
+        paramsRef.current,
+        palette,
+        sourcePaletteId,
+      );
+      setPalettePreview(null);
+      commit(result.state, result.params, label);
+      return result.palette;
+    },
+    [commit],
+  );
+
   const setMidiParameter = useCallback(
     (target: MidiParameterTarget, value: number) => {
       if (target === "morph") setMorph(value);
@@ -510,6 +563,7 @@ export function useVisualLaboratory(
     macros: state.macros,
     modulationRoutes: state.modulationRoutes,
     customPalettes: state.customPalettes,
+    palettePreview,
   };
 
   return {
@@ -538,6 +592,7 @@ export function useVisualLaboratory(
     resetMacros: () => setMacros(defaultMacros(), "Reset macros"),
     setRoutes,
     mutate,
+    surprise,
     undo: () => applyHistory("undo"),
     redo: () => applyHistory("redo"),
     returnToEntry,
@@ -551,6 +606,8 @@ export function useVisualLaboratory(
     importJson,
     exportInstrument,
     setCustomPalettes,
+    setPalettePreview,
+    commitPaletteEdit,
     setMidiParameter,
     setOverlayEnabled: (overlayEnabled: boolean) =>
       setState((current) => ({ ...current, overlayEnabled })),

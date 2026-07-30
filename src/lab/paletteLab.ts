@@ -4,7 +4,18 @@ import { clamp } from "../utils/math";
 
 const STORAGE_KEY = "music-bloom-custom-palettes-v1";
 
-function rgbToHex(r: number, g: number, b: number): string {
+export interface HsvColor {
+  h: number;
+  s: number;
+  v: number;
+}
+
+export interface ColorEditSession {
+  original: string;
+  value: string;
+}
+
+export function rgbToHex(r: number, g: number, b: number): string {
   return `#${[r, g, b]
     .map((channel) =>
       Math.round(clamp(channel, 0, 255))
@@ -12,6 +23,91 @@ function rgbToHex(r: number, g: number, b: number): string {
         .padStart(2, "0"),
     )
     .join("")}`;
+}
+
+export function normalizeHex(value: string): string | null {
+  const candidate = value.trim();
+  const expanded = /^#[0-9a-f]{3}$/i.test(candidate)
+    ? `#${candidate
+        .slice(1)
+        .split("")
+        .map((character) => character.repeat(2))
+        .join("")}`
+    : candidate;
+  return /^#[0-9a-f]{6}$/i.test(expanded) ? expanded.toLowerCase() : null;
+}
+
+export function hexToHsv(hex: string): HsvColor {
+  const [rawR, rawG, rawB] = hexToRgb(normalizeHex(hex) ?? "#000000");
+  const [r, g, b] = [rawR / 255, rawG / 255, rawB / 255];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  let hue = 0;
+  if (delta) {
+    if (max === r) hue = 60 * (((g - b) / delta) % 6);
+    else if (max === g) hue = 60 * ((b - r) / delta + 2);
+    else hue = 60 * ((r - g) / delta + 4);
+  }
+  return {
+    h: (hue + 360) % 360,
+    s: max === 0 ? 0 : delta / max,
+    v: max,
+  };
+}
+
+export function hsvToHex({ h, s, v }: HsvColor): string {
+  const hue = ((h % 360) + 360) % 360;
+  const saturation = clamp(s, 0, 1);
+  const value = clamp(v, 0, 1);
+  const chroma = value * saturation;
+  const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const offset = value - chroma;
+  const rgb =
+    hue < 60
+      ? [chroma, x, 0]
+      : hue < 120
+        ? [x, chroma, 0]
+        : hue < 180
+          ? [0, chroma, x]
+          : hue < 240
+            ? [0, x, chroma]
+            : hue < 300
+              ? [x, 0, chroma]
+              : [chroma, 0, x];
+  return rgbToHex(
+    (rgb[0] + offset) * 255,
+    (rgb[1] + offset) * 255,
+    (rgb[2] + offset) * 255,
+  );
+}
+
+export function beginColorEdit(color: string): ColorEditSession {
+  const normalized = normalizeHex(color) ?? "#000000";
+  return { original: normalized, value: normalized };
+}
+
+export function updateColorEdit(
+  session: ColorEditSession,
+  value: string,
+): ColorEditSession {
+  const normalized = normalizeHex(value);
+  return normalized ? { ...session, value: normalized } : session;
+}
+
+export function cancelColorEdit(session: ColorEditSession): string {
+  return session.original;
+}
+
+export function confirmColorEdit(session: ColorEditSession): string {
+  return session.value;
+}
+
+export function isPickerInteraction(
+  root: Pick<Node, "contains"> | null,
+  target: EventTarget | null,
+): boolean {
+  return Boolean(root && target instanceof Node && root.contains(target));
 }
 
 function rgbToHsl(r: number, g: number, b: number): [number, number, number] {

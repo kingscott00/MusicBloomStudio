@@ -87,6 +87,8 @@ export function createLaboratoryState(
     mutationSeed: params.recipeSeed,
     mutationIndex: 0,
     mutationStrength: "subtle",
+    surpriseSeed: params.recipeSeed,
+    surpriseScope: "current-scene",
     overlayEnabled: true,
   };
 }
@@ -140,6 +142,47 @@ export function copyScene(
   return {
     ...state,
     [from === "A" ? "sceneB" : "sceneA"]: clone(source),
+  };
+}
+
+export function applyPaletteEdit(
+  state: LaboratoryState,
+  params: VisualParameters,
+  palette: ColorPalette,
+  sourcePaletteId: string,
+): {
+  state: LaboratoryState;
+  params: VisualParameters;
+  palette: ColorPalette;
+} {
+  const builtIn = palettes.some((item) => item.id === sourcePaletteId);
+  const id = builtIn ? `custom-edit-${sourcePaletteId}` : sourcePaletteId;
+  const saved: ColorPalette = {
+    ...palette,
+    id,
+    name:
+      builtIn && !palette.name.endsWith(" Edit")
+        ? `${palette.name} Edit`
+        : palette.name || "Custom palette",
+    colors: [...palette.colors],
+  };
+  const customPalettes = [
+    ...state.customPalettes.filter((item) => item.id !== id),
+    saved,
+  ];
+  const nextParams = { ...params, paletteId: id };
+  const sceneKey = state.editScene === "A" ? "sceneA" : "sceneB";
+  return {
+    palette: saved,
+    params: nextParams,
+    state: {
+      ...state,
+      customPalettes,
+      [sceneKey]: {
+        ...state[sceneKey],
+        params: nextParams,
+      },
+    },
   };
 }
 
@@ -487,6 +530,15 @@ export function migrateLaboratoryState(
         ? clamp(Math.round(item.mutationIndex), 0, 999_999)
         : 0,
     mutationStrength,
+    surpriseSeed:
+      typeof item.surpriseSeed === "number" &&
+      Number.isFinite(item.surpriseSeed)
+        ? clamp(Math.round(item.surpriseSeed), 0, 999_999_999)
+        : fallbackParams.recipeSeed,
+    surpriseScope:
+      item.surpriseScope === "full-instrument"
+        ? "full-instrument"
+        : "current-scene",
     overlayEnabled:
       typeof item.overlayEnabled === "boolean" ? item.overlayEnabled : true,
     customPalettes: Array.isArray(item.customPalettes)

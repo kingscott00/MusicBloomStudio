@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MidiLearnTarget } from "../hooks/useMidiMappings";
 import type { VisualLaboratoryController } from "../hooks/useVisualLaboratory";
 import { definitionsForMode } from "../lab/definitions";
@@ -11,11 +11,13 @@ import type {
   ModulationRoute,
   ModulationSource,
   MutationStrength,
+  SurpriseScope,
 } from "../lab/types";
 import { palettes as builtInPalettes } from "../presets/palettes";
 import type { ColorPalette, VisualParameters } from "../types";
 import { experiences } from "../visuals/experiences";
 import { Icon } from "./Icon";
+import { PaletteColorPicker } from "./PaletteColorPicker";
 
 interface Props {
   controller: VisualLaboratoryController;
@@ -74,6 +76,10 @@ export function VisualLaboratory({
   onShowGuide,
 }: Props) {
   const [tab, setTab] = useState<LabTab>("design");
+  const [surpriseScope, setSurpriseScope] = useState<SurpriseScope>(
+    controller.state.surpriseScope,
+  );
+  const [seedCopied, setSeedCopied] = useState(false);
   const tabs: Array<[LabTab, string]> = [
     ["design", "Design"],
     ["scenes", "A/B Scenes"],
@@ -131,6 +137,62 @@ export function VisualLaboratory({
           </button>
         </div>
         <div className="lab-toolbar-actions">
+          <div className="surprise-controls">
+            <select
+              aria-label="Surprise scope"
+              value={surpriseScope}
+              onChange={(event) =>
+                setSurpriseScope(event.target.value as SurpriseScope)
+              }
+            >
+              <option value="current-scene">Current Scene</option>
+              <option value="full-instrument">Full Instrument</option>
+            </select>
+            <button
+              className="surprise-button"
+              onClick={() => controller.surprise(surpriseScope)}
+              title="Creates one undoable, unsaved design without overwriting instruments"
+            >
+              Surprise Me
+            </button>
+            <details className="surprise-recipe">
+              <summary>Seed {controller.state.surpriseSeed}</summary>
+              <div>
+                <small>
+                  {controller.state.surpriseScope === "full-instrument"
+                    ? "Full Instrument"
+                    : "Current Scene"}{" "}
+                  · respects locks · one Undo
+                </small>
+                <button
+                  onClick={() => {
+                    void navigator.clipboard
+                      ?.writeText(String(controller.state.surpriseSeed))
+                      .then(() => {
+                        setSeedCopied(true);
+                        window.setTimeout(() => setSeedCopied(false), 1200);
+                      })
+                      .catch(() => setSeedCopied(false));
+                  }}
+                >
+                  {seedCopied ? "Copied" : "Copy Seed"}
+                </button>
+                <button
+                  onClick={() =>
+                    controller.surprise(
+                      controller.state.surpriseScope,
+                      controller.state.surpriseSeed,
+                    )
+                  }
+                >
+                  Replay Seed
+                </button>
+                <button onClick={() => controller.surprise(surpriseScope)}>
+                  New Seed
+                </button>
+              </div>
+            </details>
+          </div>
           <button
             onClick={controller.undo}
             disabled={controller.history.index <= 0}
@@ -990,6 +1052,8 @@ function PaletteTab({
   params: VisualParameters;
 }) {
   const allPalettes = controller.palettes;
+  const { setPalettePreview } = controller;
+  const editScene = controller.state.editScene;
   const source =
     allPalettes.find((palette) => palette.id === params.paletteId) ??
     allPalettes[0];
@@ -1001,28 +1065,55 @@ function PaletteTab({
   const [saturation, setSaturation] = useState(100);
   const [brightness, setBrightness] = useState(100);
   const [temperature, setTemperature] = useState(0);
+  const [editing, setEditing] = useState<
+    { kind: "stop"; index: number } | { kind: "background" } | null
+  >(null);
   const preview = useMemo(
     () =>
       transformPalette(draft, rotation, saturation, brightness, temperature),
     [brightness, draft, rotation, saturation, temperature],
   );
-  const save = () => {
-    const id = draft.id.startsWith("custom-")
-      ? draft.id
-      : `custom-${Date.now().toString(36)}`;
-    const palette = { ...preview, id, name: draft.name || "Custom palette" };
-    const custom = [
-      ...controller.state.customPalettes.filter((item) => item.id !== id),
-      palette,
-    ];
-    controller.setCustomPalettes(custom);
-    controller.updateShared({ paletteId: id }, "Saved custom palette");
-    setDraft(palette);
+  useEffect(() => {
+    setDraft({ ...source, colors: [...source.colors] });
     setRotation(0);
     setSaturation(100);
     setBrightness(100);
     setTemperature(0);
+    setEditing(null);
+  }, [source]);
+  useEffect(() => {
+    setPalettePreview({
+      palette: preview,
+      scene: editScene,
+      sourcePaletteId: source.id,
+    });
+  }, [editScene, preview, setPalettePreview, source.id]);
+  useEffect(() => () => setPalettePreview(null), [setPalettePreview]);
+
+  const materialize = (
+    nextDraft: ColorPalette,
+    label = "Palette color edit",
+  ) => {
+    const transformed = transformPalette(
+      nextDraft,
+      rotation,
+      saturation,
+      brightness,
+      temperature,
+    );
+    const saved = controller.commitPaletteEdit(transformed, source.id, label);
+    setDraft(saved);
+    setRotation(0);
+    setSaturation(100);
+    setBrightness(100);
+    setTemperature(0);
+    setEditing(null);
   };
+
+  const save = () => {
+    materialize(draft, "Saved custom palette");
+  };
+
   return (
     <>
       <LabHeading
@@ -1038,6 +1129,7 @@ function PaletteTab({
               (palette) => palette.id === event.target.value,
             );
             if (next) {
+              setEditing(null);
               controller.updateShared(
                 { paletteId: next.id },
                 "Palette selected",
@@ -1062,18 +1154,15 @@ function PaletteTab({
       </label>
       <div className="color-stop-list">
         {draft.colors.map((color, index) => (
-          <div key={`${index}-${color}`}>
-            <input
-              type="color"
-              value={color}
-              onChange={(event) =>
-                setDraft({
-                  ...draft,
-                  colors: draft.colors.map((item, colorIndex) =>
-                    colorIndex === index ? event.target.value : item,
-                  ),
-                })
+          <div key={`stop-${index}`} className="color-stop">
+            <button
+              className="color-swatch-button"
+              style={{ background: color }}
+              aria-label={`Edit color stop ${index + 1}, ${color}`}
+              aria-expanded={
+                editing?.kind === "stop" && editing.index === index
               }
+              onClick={() => setEditing({ kind: "stop", index })}
             />
             <span>{color}</span>
             <button
@@ -1115,6 +1204,29 @@ function PaletteTab({
             >
               ×
             </button>
+            {editing?.kind === "stop" && editing.index === index && (
+              <PaletteColorPicker
+                value={color}
+                label={`Color stop ${index + 1}`}
+                onPreview={(nextColor) =>
+                  setDraft((current) => ({
+                    ...current,
+                    colors: current.colors.map((item, colorIndex) =>
+                      colorIndex === index ? nextColor : item,
+                    ),
+                  }))
+                }
+                onDone={(nextColor) =>
+                  materialize({
+                    ...draft,
+                    colors: draft.colors.map((item, colorIndex) =>
+                      colorIndex === index ? nextColor : item,
+                    ),
+                  })
+                }
+                onCancel={() => setEditing(null)}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -1129,16 +1241,28 @@ function PaletteTab({
       >
         + Add stop
       </button>
-      <label className="lab-field">
-        Background{" "}
-        <input
-          type="color"
-          value={draft.background}
-          onChange={(event) =>
-            setDraft({ ...draft, background: event.target.value })
-          }
+      <div className="background-color-row">
+        <span>Background</span>
+        <button
+          className="color-swatch-button"
+          style={{ background: draft.background }}
+          aria-label={`Edit background color, ${draft.background}`}
+          aria-expanded={editing?.kind === "background"}
+          onClick={() => setEditing({ kind: "background" })}
         />
-      </label>
+        <code>{draft.background}</code>
+        {editing?.kind === "background" && (
+          <PaletteColorPicker
+            value={draft.background}
+            label="Background"
+            onPreview={(background) =>
+              setDraft((current) => ({ ...current, background }))
+            }
+            onDone={(background) => materialize({ ...draft, background })}
+            onCancel={() => setEditing(null)}
+          />
+        )}
+      </div>
       <Range
         label="Hue rotation"
         min={-180}
