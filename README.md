@@ -54,7 +54,34 @@ Use **Surprise Me** to create a curated, deterministic visual recipe. The recipe
 number is shown beside the button and is retained when the result is saved as a
 custom preset. Enter a recipe number and choose **Replay** to reproduce it.
 Randomization uses experience-specific ranges and keeps the current quality and
-reduced-motion preferences.
+reduced-motion preferences. Compact locks can preserve the experience, palette,
+density, motion, trails, glow, or symmetry while the remaining qualities
+change.
+
+Twenty built-in showcase presets provide a restrained and an immersive
+direction for every visual experience. Featured presets surface the strongest
+starting points; favorites are stored locally. Presets can also be filtered by
+experience.
+
+## MIDI Performance Controls
+
+Open **MIDI Performance Controls**, select a visual parameter or action, choose
+**Learn**, then move a hardware control. Notes and sustain continue through the
+musical performance path and are never treated as Learn gestures.
+
+- Learn standard Control Change messages, modulation wheel, pitch bend, and
+  channel pressure.
+- Map density, speed, rotation, symmetry, trails, glow, bloom,
+  responsiveness, background light, or idle motion.
+- Map buttons to Surprise Me, adjacent presets or experiences, and Reset
+  Visuals.
+- Set input/output ranges, inversion, smoothing, pickup or direct takeover,
+  and permanent or momentary pitch-wheel behavior.
+- Keep device-specific mapping profiles locally, or export/import them as
+  JSON.
+
+The optional developer simulator is available only in a development build at
+`?midi-sim=1`; it is not included in the normal production interface.
 
 ## Musical mapping
 
@@ -83,8 +110,8 @@ Web MIDI is expected to work in current Chromium-based desktop browsers, includi
 ```text
 src/
   components/   React interface and canvas host
-  hooks/        Performance and Web MIDI lifecycle
-  midi/         Raw MIDI parsing
+  hooks/        Performance, Web MIDI lifecycle, and mapping orchestration
+  midi/         Raw MIDI parsing and live-control mapping math
   music/        Held notes, sustain, naming, chord detection, analysis
   presets/      Palettes and local preset persistence
   types/        Shared strict TypeScript contracts

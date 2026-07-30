@@ -51,5 +51,12 @@ describe("custom preset persistence", () => {
     expect(new Set(builtInPresets.map((preset) => preset.id)).size).toBe(
       builtInPresets.length,
     );
+    for (const mode of modes)
+      expect(
+        builtInPresets.filter((preset) => preset.params.mode === mode).length,
+      ).toBeGreaterThanOrEqual(2);
+    expect(
+      builtInPresets.filter((preset) => preset.featured).length,
+    ).toBeGreaterThanOrEqual(6);
   });
 });

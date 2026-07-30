@@ -3,6 +3,7 @@ export interface DevSimulation {
   duration: number | null;
   sustain: boolean;
   pedalUp: number | null;
+  velocity: number;
 }
 
 function boundedMilliseconds(value: string | null): number | null {
@@ -14,7 +15,13 @@ function boundedMilliseconds(value: string | null): number | null {
 
 export function devSimulationFromSearch(search: string): DevSimulation {
   if (!import.meta.env.DEV)
-    return { notes: [], duration: null, sustain: false, pedalUp: null };
+    return {
+      notes: [],
+      duration: null,
+      sustain: false,
+      pedalUp: null,
+      velocity: 104,
+    };
   const params = new URLSearchParams(search);
   const value = params.get("devNotes");
   const notes = value
@@ -34,6 +41,9 @@ export function devSimulationFromSearch(search: string): DevSimulation {
     duration: boundedMilliseconds(params.get("devDuration")),
     sustain: params.get("devSustain") === "1",
     pedalUp: boundedMilliseconds(params.get("devPedalUp")),
+    velocity: Math.round(
+      Math.min(127, Math.max(1, Number(params.get("devVelocity")) || 104)),
+    ),
   };
 }
 

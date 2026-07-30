@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { pitchClassName } from "../music/notes";
 import { palettes } from "../presets/palettes";
 import { experiences } from "../visuals/experiences";
-import type { RenderMetrics, RenderQuality, VisualParameters } from "../types";
+import type {
+  RandomizerLock,
+  RandomizerLocks,
+  RenderMetrics,
+  RenderQuality,
+  VisualParameters,
+} from "../types";
 import { Icon } from "./Icon";
 
 interface VisualControlsProps {
@@ -13,7 +19,20 @@ interface VisualControlsProps {
   diagnosticsOpen: boolean;
   onDiagnosticsChange: (open: boolean) => void;
   onRandomize: (seed?: number) => void;
+  randomizerLocks: RandomizerLocks;
+  onRandomizerLockChange: (lock: RandomizerLock, value: boolean) => void;
+  onClearRandomizerLocks: () => void;
 }
+
+const lockLabels: Array<[RandomizerLock, string]> = [
+  ["experience", "Experience"],
+  ["palette", "Palette"],
+  ["density", "Density"],
+  ["motion", "Motion"],
+  ["trails", "Trails"],
+  ["glow", "Glow"],
+  ["symmetry", "Symmetry"],
+];
 
 const sliders: Array<{
   key: keyof VisualParameters;
@@ -41,6 +60,9 @@ export function VisualControls({
   diagnosticsOpen,
   onDiagnosticsChange,
   onRandomize,
+  randomizerLocks,
+  onRandomizerLockChange,
+  onClearRandomizerLocks,
 }: VisualControlsProps) {
   const [performanceOpen, setPerformanceOpen] = useState(true);
   const [recipeInput, setRecipeInput] = useState(String(params.recipeSeed));
@@ -100,6 +122,26 @@ export function VisualControls({
             Replay
           </button>
         </form>
+        <div className="randomizer-locks" aria-label="Randomizer locks">
+          <span>Keep</span>
+          {lockLabels.map(([key, label]) => (
+            <button
+              key={key}
+              className={randomizerLocks[key] ? "active" : ""}
+              onClick={() => onRandomizerLockChange(key, !randomizerLocks[key])}
+              aria-pressed={randomizerLocks[key]}
+              title={`${randomizerLocks[key] ? "Unlock" : "Lock"} ${label}`}
+            >
+              <span aria-hidden="true">{randomizerLocks[key] ? "◆" : "◇"}</span>{" "}
+              {label}
+            </button>
+          ))}
+          {Object.values(randomizerLocks).some(Boolean) && (
+            <button className="clear-locks" onClick={onClearRandomizerLocks}>
+              Clear locks
+            </button>
+          )}
+        </div>
       </div>
       <div className="experience-browser">
         <span className="experience-family">FOUNDATIONS</span>

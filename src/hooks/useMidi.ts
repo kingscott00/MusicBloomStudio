@@ -1,16 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseMidiMessage } from "../midi/parser";
-import type { MidiDevice, MidiStatus, NoteEvent } from "../types";
+import type {
+  MidiControlMessage,
+  MidiDevice,
+  MidiStatus,
+  NoteEvent,
+} from "../types";
 
 const DEVICE_KEY = "music-bloom-midi-device";
 
 interface UseMidiOptions {
   onNote: (event: NoteEvent) => void;
   onSustain: (down: boolean) => void;
+  onControl?: (message: MidiControlMessage) => void;
   onDisconnect: () => void;
 }
 
-export function useMidi({ onNote, onSustain, onDisconnect }: UseMidiOptions) {
+export function useMidi({
+  onNote,
+  onSustain,
+  onControl,
+  onDisconnect,
+}: UseMidiOptions) {
   const [status, setStatus] = useState<MidiStatus>(() =>
     navigator.requestMIDIAccess ? "idle" : "unsupported",
   );
@@ -20,8 +31,13 @@ export function useMidi({ onNote, onSustain, onDisconnect }: UseMidiOptions) {
   );
   const [error, setError] = useState("");
   const accessRef = useRef<MIDIAccess | null>(null);
-  const callbacksRef = useRef({ onNote, onSustain, onDisconnect });
-  callbacksRef.current = { onNote, onSustain, onDisconnect };
+  const callbacksRef = useRef({
+    onNote,
+    onSustain,
+    onControl,
+    onDisconnect,
+  });
+  callbacksRef.current = { onNote, onSustain, onControl, onDisconnect };
 
   const bindInput = useCallback((id: string) => {
     const access = accessRef.current;
@@ -35,10 +51,55 @@ export function useMidi({ onNote, onSustain, onDisconnect }: UseMidiOptions) {
     }
     input.onmidimessage = (message) => {
       if (!message.data) return;
-      const parsed = parseMidiMessage(message.data, performance.now());
+      const timestamp = performance.now();
+      const parsed = parseMidiMessage(message.data, timestamp);
       if (parsed.kind === "note") callbacksRef.current.onNote(parsed.event);
-      if (parsed.kind === "sustain")
+      if (parsed.kind === "sustain") {
         callbacksRef.current.onSustain(parsed.down);
+        callbacksRef.current.onControl?.({
+          source: "cc",
+          deviceId: input.id,
+          deviceName: input.name || "Unnamed MIDI input",
+          channel: parsed.channel,
+          controller: parsed.controller,
+          rawValue: parsed.value,
+          value: parsed.value,
+          timestamp,
+        });
+      }
+      if (parsed.kind === "control")
+        callbacksRef.current.onControl?.({
+          source: "cc",
+          deviceId: input.id,
+          deviceName: input.name || "Unnamed MIDI input",
+          channel: parsed.channel,
+          controller: parsed.controller,
+          rawValue: parsed.value,
+          value: parsed.value,
+          timestamp,
+        });
+      if (parsed.kind === "pitchbend")
+        callbacksRef.current.onControl?.({
+          source: "pitchbend",
+          deviceId: input.id,
+          deviceName: input.name || "Unnamed MIDI input",
+          channel: parsed.channel,
+          controller: null,
+          rawValue: parsed.value,
+          value: (parsed.value / 16_383) * 127,
+          timestamp,
+        });
+      if (parsed.kind === "pressure")
+        callbacksRef.current.onControl?.({
+          source: "pressure",
+          deviceId: input.id,
+          deviceName: input.name || "Unnamed MIDI input",
+          channel: parsed.channel,
+          controller: null,
+          rawValue: parsed.value,
+          value: parsed.value,
+          timestamp,
+        });
     };
     setStatus("connected");
     setSelectedId(id);
@@ -109,5 +170,12 @@ export function useMidi({ onNote, onSustain, onDisconnect }: UseMidiOptions) {
     [],
   );
 
-  return { status, devices, selectedId, error, requestAccess, selectDevice };
+  return {
+    status,
+    devices,
+    selectedId,
+    error,
+    requestAccess,
+    selectDevice,
+  };
 }

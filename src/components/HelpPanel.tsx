@@ -64,11 +64,18 @@ export function HelpPanel({ open, onClose }: HelpPanelProps) {
           </HelpSection>
           <HelpSection number="05" title="Make it yours">
             Explore ten visual worlds, or choose <b>Surprise Me</b> for a
-            curated recipe. Tune density, movement, symmetry, trails, glow, and
-            response. Curated presets are protected; randomized and custom
-            results can be saved locally, renamed, or deleted.
+            curated recipe. Lock the qualities you want to keep, then replay any
+            result from its recipe seed. Featured atmospheres are art-directed
+            highlights, and the star keeps favorites locally.
           </HelpSection>
-          <HelpSection number="06" title="If a device is missing">
+          <HelpSection number="06" title="Perform with MIDI controls">
+            Open <b>MIDI Performance Controls</b>, choose a visual parameter or
+            action, press Learn, then move a knob, slider, wheel, or button.
+            Pickup waits for the hardware position before taking control, so
+            selecting a preset does not cause an abrupt jump. Notes continue
+            shaping the artwork normally.
+          </HelpSection>
+          <HelpSection number="07" title="If a device is missing">
             Confirm the controller is powered on and connected before granting
             permission. Try reconnecting it, pressing Connect MIDI again, or
             reloading the page. Close other music software that may hold the
@@ -77,7 +84,8 @@ export function HelpPanel({ open, onClose }: HelpPanelProps) {
         </div>
         <footer>
           <span>
-            Tip: use Clean view, then move between presets while you play.
+            Tip: map Next preset and Surprise Me for hands-on performances in
+            Clean view.
           </span>
           <button className="button primary" onClick={onClose}>
             Begin playing

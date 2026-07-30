@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HelpPanel } from "./components/HelpPanel";
 import { Icon } from "./components/Icon";
 import { MidiPanel } from "./components/MidiPanel";
+import { MidiPerformanceControls } from "./components/MidiPerformanceControls";
 import { PerformanceDisplay } from "./components/PerformanceDisplay";
 import { PianoKeyboard } from "./components/PianoKeyboard";
 import { PresetBrowser } from "./components/PresetBrowser";
@@ -11,6 +12,7 @@ import {
 } from "./components/VisualCanvas";
 import { VisualControls } from "./components/VisualControls";
 import { useMidi } from "./hooks/useMidi";
+import { useMidiMappings } from "./hooks/useMidiMappings";
 import { usePerformance } from "./hooks/usePerformance";
 import { devSimulationFromSearch } from "./music/devSimulation";
 import {
@@ -19,10 +21,25 @@ import {
   loadCustomPresets,
   saveCustomPresets,
 } from "./presets/presets";
-import { createRandomizedParameters, randomSeed } from "./presets/randomizer";
-import type { Preset, RenderMetrics, VisualParameters } from "./types";
+import {
+  createRandomizedParameters,
+  defaultRandomizerLocks,
+  loadRandomizerLocks,
+  randomSeed,
+  saveRandomizerLocks,
+} from "./presets/randomizer";
+import type {
+  MidiActionTarget,
+  MidiControlMessage,
+  Preset,
+  RandomizerLock,
+  RenderMetrics,
+  VisualParameters,
+} from "./types";
+import { experiences } from "./visuals/experiences";
 
 const SETTINGS_KEY = "music-bloom-settings-v1";
+const FAVORITES_KEY = "music-bloom-favorite-presets-v1";
 
 function loadSettings(): { params: VisualParameters; preferFlats: boolean } {
   try {
@@ -55,6 +72,19 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [cleanView, setCleanView] = useState(false);
   const [customPresets, setCustomPresets] = useState(loadCustomPresets);
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
+    try {
+      const value = JSON.parse(
+        localStorage.getItem(FAVORITES_KEY) ?? "[]",
+      ) as unknown;
+      return Array.isArray(value)
+        ? value.filter((id): id is string => typeof id === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  const [randomizerLocks, setRandomizerLocks] = useState(loadRandomizerLocks);
   const [activePreset, setActivePreset] = useState("moonlit-bloom");
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [renderMetrics, setRenderMetrics] = useState<RenderMetrics>({
@@ -80,6 +110,16 @@ export default function App() {
   });
   const canvasRef = useRef<VisualCanvasHandle>(null);
   const stageRef = useRef<HTMLElement>(null);
+  const midiControlHandlerRef = useRef<(message: MidiControlMessage) => void>(
+    () => undefined,
+  );
+  const midiActionHandlerRef = useRef<(action: MidiActionTarget) => void>(
+    () => undefined,
+  );
+  const updateParams = useCallback((changes: Partial<VisualParameters>) => {
+    setParams((current) => ({ ...current, ...changes }));
+    setActivePreset("");
+  }, []);
   const performance = usePerformance(preferFlats);
   const devNoteOn = performance.noteOn;
   const devNoteOff = performance.noteOff;
@@ -87,11 +127,22 @@ export default function App() {
   const midi = useMidi({
     onNote: performance.sendEvent,
     onSustain: performance.setPhysicalSustain,
+    onControl: (message) => midiControlHandlerRef.current(message),
     onDisconnect: () => {
       performance.clearSource("midi");
       performance.setPhysicalSustain(false);
     },
   });
+  const selectedMidiDevice = midi.devices.find(
+    (device) => device.id === midi.selectedId,
+  );
+  const midiMappings = useMidiMappings({
+    params,
+    selectedDevice: selectedMidiDevice,
+    onParameterChange: updateParams,
+    onAction: (action) => midiActionHandlerRef.current(action),
+  });
+  midiControlHandlerRef.current = midiMappings.handleControl;
   const allPresets = useMemo(
     () => [...builtInPresets, ...customPresets],
     [customPresets],
@@ -109,7 +160,8 @@ export default function App() {
       if (disposed) return;
       started = true;
       if (simulation.sustain) devSetSustain(true);
-      for (const note of simulation.notes) devNoteOn(note, 104, "screen");
+      for (const note of simulation.notes)
+        devNoteOn(note, simulation.velocity, "screen");
       if (simulation.duration !== null) {
         timers.push(
           window.setTimeout(() => {
@@ -138,6 +190,14 @@ export default function App() {
   }, [params, preferFlats]);
 
   useEffect(() => {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(favoriteIds));
+  }, [favoriteIds]);
+
+  useEffect(() => {
+    saveRandomizerLocks(randomizerLocks);
+  }, [randomizerLocks]);
+
+  useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setCleanView(false);
@@ -155,14 +215,15 @@ export default function App() {
     };
   }, []);
 
-  const updateParams = useCallback((changes: Partial<VisualParameters>) => {
-    setParams((current) => ({ ...current, ...changes }));
-    setActivePreset("");
-  }, []);
-
   const applyPreset = (preset: Preset) => {
-    setParams({ ...preset.params, reducedMotion: params.reducedMotion });
+    setParams({
+      ...preset.params,
+      reducedMotion: params.reducedMotion,
+      quality: params.quality,
+    });
     setActivePreset(preset.id);
+    canvasRef.current?.reset();
+    midiMappings.armPickup();
   };
 
   const savePreset = (name: string) => {
@@ -194,6 +255,9 @@ export default function App() {
       const updated = current.filter((preset) => preset.id !== id);
       saveCustomPresets(updated);
       if (activePreset === id) setActivePreset("");
+      setFavoriteIds((favorites) =>
+        favorites.filter((favoriteId) => favoriteId !== id),
+      );
       return updated;
     });
 
@@ -201,13 +265,54 @@ export default function App() {
     setParams({ ...defaultParams, reducedMotion: params.reducedMotion });
     setActivePreset("moonlit-bloom");
     canvasRef.current?.reset();
+    midiMappings.armPickup();
   };
 
   const randomizeVisuals = (requestedSeed?: number) => {
     const seed = requestedSeed ?? randomSeed();
-    setParams((current) => createRandomizedParameters(current, seed));
+    setParams((current) =>
+      createRandomizedParameters(current, seed, randomizerLocks),
+    );
     setActivePreset("");
     canvasRef.current?.reset();
+    midiMappings.armPickup();
+  };
+
+  const movePreset = (direction: -1 | 1) => {
+    const currentIndex = allPresets.findIndex(
+      (preset) => preset.id === activePreset,
+    );
+    const start = currentIndex >= 0 ? currentIndex : 0;
+    const next =
+      allPresets[(start + direction + allPresets.length) % allPresets.length];
+    if (next) applyPreset(next);
+  };
+
+  const moveExperience = (direction: -1 | 1) => {
+    const currentIndex = experiences.findIndex(
+      (experience) => experience.id === params.mode,
+    );
+    const next =
+      experiences[
+        (currentIndex + direction + experiences.length) % experiences.length
+      ];
+    if (next) {
+      updateParams({ mode: next.id });
+      canvasRef.current?.reset();
+      midiMappings.armPickup();
+    }
+  };
+
+  midiActionHandlerRef.current = (action) => {
+    const actions: Record<MidiActionTarget, () => void> = {
+      surprise: () => randomizeVisuals(),
+      "previous-preset": () => movePreset(-1),
+      "next-preset": () => movePreset(1),
+      "previous-experience": () => moveExperience(-1),
+      "next-experience": () => moveExperience(1),
+      reset: resetVisuals,
+    };
+    actions[action]();
   };
 
   const enterFullscreen = async () => {
@@ -286,6 +391,14 @@ export default function App() {
             onRequest={midi.requestAccess}
             onSelect={midi.selectDevice}
           />
+          <MidiPerformanceControls
+            device={selectedMidiDevice}
+            controller={midiMappings}
+            showDeveloperSimulator={
+              import.meta.env.DEV &&
+              new URLSearchParams(window.location.search).has("midi-sim")
+            }
+          />
           <PerformanceDisplay
             music={performance.music}
             preferFlats={preferFlats}
@@ -324,6 +437,16 @@ export default function App() {
               diagnosticsOpen={diagnosticsOpen}
               onDiagnosticsChange={setDiagnosticsOpen}
               onRandomize={randomizeVisuals}
+              randomizerLocks={randomizerLocks}
+              onRandomizerLockChange={(lock: RandomizerLock, value: boolean) =>
+                setRandomizerLocks((current) => ({
+                  ...current,
+                  [lock]: value,
+                }))
+              }
+              onClearRandomizerLocks={() =>
+                setRandomizerLocks(defaultRandomizerLocks)
+              }
             />
           )}
         </aside>
@@ -347,6 +470,14 @@ export default function App() {
               onSave={savePreset}
               onRename={renamePreset}
               onDelete={deletePreset}
+              favoriteIds={favoriteIds}
+              onToggleFavorite={(id) =>
+                setFavoriteIds((current) =>
+                  current.includes(id)
+                    ? current.filter((favoriteId) => favoriteId !== id)
+                    : [...current, id],
+                )
+              }
             />
           )}
         </div>
@@ -377,6 +508,16 @@ export default function App() {
           <button className="exit-clean" onClick={() => setCleanView(false)}>
             <Icon name="close" size={16} /> Exit clean view <kbd>Esc</kbd>
           </button>
+        )}
+        {midiMappings.feedbackEnabled && midiMappings.feedback && (
+          <div
+            className="midi-value-overlay"
+            key={midiMappings.feedback.id}
+            aria-live="polite"
+          >
+            <span>{midiMappings.feedback.label}</span>
+            <b>{midiMappings.feedback.value}</b>
+          </div>
         )}
       </section>
       <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />

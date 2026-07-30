@@ -85,6 +85,7 @@ export class NebulaGenerator implements VisualGenerator {
           (1 - register) * 0.028 +
           voice.energy * 0.015 +
           voice.development * 0.012) *
+        (cloudVoices.length === 1 ? 1.35 : 1) *
         releaseScale;
       const color = noteColor(frame, voice.note, voiceIndex * 0.04);
       const lobes = frame.qualityScale > 0.68 ? 5 : 3;

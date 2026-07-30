@@ -1,4 +1,4 @@
-import type { VisualMode, VisualParameters } from "../types";
+import type { RandomizerLocks, VisualMode, VisualParameters } from "../types";
 import { experiences } from "../visuals/experiences";
 
 interface Range {
@@ -58,9 +58,9 @@ const recipes: Record<VisualMode, ExperienceRecipe> = {
     speed: { min: 18, max: 52 },
     rotation: { min: 10, max: 54 },
     symmetry: { min: 4, max: 9 },
-    trails: { min: 76, max: 94 },
-    glow: { min: 46, max: 78 },
-    bloom: { min: 38, max: 68 },
+    trails: { min: 72, max: 86 },
+    glow: { min: 42, max: 70 },
+    bloom: { min: 36, max: 62 },
     responsiveness: { min: 58, max: 86 },
     background: { min: 4, max: 15 },
     idle: { min: 20, max: 44 },
@@ -75,7 +75,7 @@ const recipes: Record<VisualMode, ExperienceRecipe> = {
     glow: { min: 56, max: 88 },
     bloom: { min: 42, max: 72 },
     responsiveness: { min: 56, max: 84 },
-    background: { min: 2, max: 12 },
+    background: { min: 4, max: 14 },
     idle: { min: 26, max: 52 },
     driftChance: 0.74,
   }),
@@ -106,15 +106,15 @@ const recipes: Record<VisualMode, ExperienceRecipe> = {
     driftChance: 0.58,
   }),
   nebula: recipe(["violet", "sunset", "aurora", "ocean", "embers"], {
-    density: { min: 48, max: 78 },
+    density: { min: 48, max: 72 },
     speed: { min: 14, max: 44 },
     rotation: { min: 18, max: 62 },
     symmetry: { min: 4, max: 8 },
     trails: { min: 76, max: 94 },
-    glow: { min: 62, max: 90 },
-    bloom: { min: 68, max: 94 },
+    glow: { min: 60, max: 86 },
+    bloom: { min: 66, max: 90 },
     responsiveness: { min: 62, max: 88 },
-    background: { min: 5, max: 20 },
+    background: { min: 5, max: 16 },
     idle: { min: 28, max: 54 },
     driftChance: 0.92,
   }),
@@ -159,6 +159,35 @@ const recipes: Record<VisualMode, ExperienceRecipe> = {
   }),
 };
 
+export const defaultRandomizerLocks: RandomizerLocks = {
+  experience: false,
+  palette: false,
+  density: false,
+  motion: false,
+  trails: false,
+  glow: false,
+  symmetry: false,
+};
+
+const LOCKS_STORAGE_KEY = "music-bloom-randomizer-locks-v1";
+
+export function loadRandomizerLocks(): RandomizerLocks {
+  try {
+    return {
+      ...defaultRandomizerLocks,
+      ...(JSON.parse(
+        localStorage.getItem(LOCKS_STORAGE_KEY) ?? "{}",
+      ) as Partial<RandomizerLocks>),
+    };
+  } catch {
+    return defaultRandomizerLocks;
+  }
+}
+
+export function saveRandomizerLocks(locks: RandomizerLocks): void {
+  localStorage.setItem(LOCKS_STORAGE_KEY, JSON.stringify(locks));
+}
+
 export function randomSeed(): number {
   const values = new Uint32Array(1);
   crypto.getRandomValues(values);
@@ -168,11 +197,18 @@ export function randomSeed(): number {
 export function createRandomizedParameters(
   current: VisualParameters,
   seed: number,
-  withinCurrentExperience = false,
+  locksOrWithinCurrent: RandomizerLocks | boolean = defaultRandomizerLocks,
 ): VisualParameters {
   const random = mulberry32(seed);
+  const locks =
+    typeof locksOrWithinCurrent === "boolean"
+      ? {
+          ...defaultRandomizerLocks,
+          experience: locksOrWithinCurrent,
+        }
+      : { ...defaultRandomizerLocks, ...locksOrWithinCurrent };
   const available = experiences.map((experience) => experience.id);
-  const mode = withinCurrentExperience
+  const mode = locks.experience
     ? current.mode
     : available[Math.floor(random() * available.length)];
   const constraints = recipes[mode];
@@ -186,18 +222,22 @@ export function createRandomizedParameters(
   return {
     ...current,
     mode,
-    paletteId: constraints.palettes[paletteIndex],
-    density: choose(constraints.density),
-    speed: choose(constraints.speed),
-    rotation: choose(constraints.rotation),
-    symmetry: choose(constraints.symmetry),
-    trails: choose(constraints.trails),
-    glow: choose(constraints.glow),
+    paletteId: locks.palette
+      ? current.paletteId
+      : constraints.palettes[paletteIndex],
+    density: locks.density ? current.density : choose(constraints.density),
+    speed: locks.motion ? current.speed : choose(constraints.speed),
+    rotation: locks.motion ? current.rotation : choose(constraints.rotation),
+    symmetry: locks.symmetry ? current.symmetry : choose(constraints.symmetry),
+    trails: locks.trails ? current.trails : choose(constraints.trails),
+    glow: locks.glow ? current.glow : choose(constraints.glow),
     bloom: choose(constraints.bloom),
     responsiveness: choose(constraints.responsiveness),
     background: choose(constraints.background),
-    idle: choose(constraints.idle),
-    autoMotion: random() < constraints.driftChance,
+    idle: locks.motion ? current.idle : choose(constraints.idle),
+    autoMotion: locks.motion
+      ? current.autoMotion
+      : random() < constraints.driftChance,
     recipeSeed: seed,
   };
 }

@@ -176,8 +176,20 @@ export interface Preset {
   id: string;
   name: string;
   builtIn: boolean;
+  featured?: boolean;
   params: VisualParameters;
 }
+
+export type RandomizerLock =
+  | "experience"
+  | "palette"
+  | "density"
+  | "motion"
+  | "trails"
+  | "glow"
+  | "symmetry";
+
+export type RandomizerLocks = Record<RandomizerLock, boolean>;
 
 export type MidiStatus =
   | "idle"
@@ -192,6 +204,69 @@ export interface MidiDevice {
   name: string;
   manufacturer: string;
   state: "connected" | "disconnected";
+}
+
+export type MidiControlSource = "cc" | "pitchbend" | "pressure";
+export type MidiSmoothing = "none" | "light" | "medium" | "heavy";
+export type MidiTakeover = "pickup" | "jump";
+export type MidiPitchMode = "permanent" | "momentary";
+
+export interface MidiControlMessage {
+  source: MidiControlSource;
+  deviceId: string;
+  deviceName: string;
+  channel: number;
+  controller: number | null;
+  rawValue: number;
+  value: number;
+  timestamp: number;
+}
+
+export type MidiParameterTarget =
+  | "density"
+  | "speed"
+  | "rotation"
+  | "symmetry"
+  | "trails"
+  | "glow"
+  | "bloom"
+  | "responsiveness"
+  | "background"
+  | "idle";
+
+export type MidiActionTarget =
+  | "surprise"
+  | "previous-preset"
+  | "next-preset"
+  | "previous-experience"
+  | "next-experience"
+  | "reset";
+
+export interface MidiMapping {
+  id: string;
+  targetType: "parameter" | "action";
+  target: MidiParameterTarget | MidiActionTarget;
+  deviceId: string;
+  deviceName: string;
+  source: MidiControlSource;
+  channel: number;
+  controller: number | null;
+  inputMin: number;
+  inputMax: number;
+  outputMin: number;
+  outputMax: number;
+  invert: boolean;
+  smoothing: MidiSmoothing;
+  takeover: MidiTakeover;
+  pitchMode: MidiPitchMode;
+}
+
+export interface MidiMappingProfile {
+  id: string;
+  name: string;
+  deviceId: string;
+  deviceName: string;
+  mappings: MidiMapping[];
 }
 
 export interface VisualGenerator {

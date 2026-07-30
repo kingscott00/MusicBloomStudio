@@ -5,13 +5,14 @@ describe("developer note simulation", () => {
   it("parses timed note and sustain scenarios for lifecycle verification", () => {
     expect(
       devSimulationFromSearch(
-        "?devNotes=48,60,60,999&devDuration=100&devSustain=1&devPedalUp=2000",
+        "?devNotes=48,60,60,999&devDuration=100&devSustain=1&devPedalUp=2000&devVelocity=22",
       ),
     ).toEqual({
       notes: [48, 60],
       duration: 100,
       sustain: true,
       pedalUp: 2000,
+      velocity: 22,
     });
   });
 
@@ -22,5 +23,6 @@ describe("developer note simulation", () => {
     expect(simulation.notes).toEqual([127]);
     expect(simulation.duration).toBe(20);
     expect(simulation.pedalUp).toBe(12_000);
+    expect(simulation.velocity).toBe(104);
   });
 });

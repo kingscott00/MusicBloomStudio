@@ -92,7 +92,7 @@ export class RibbonsGenerator implements VisualGenerator {
     );
 
     context.save();
-    context.globalCompositeOperation = "lighter";
+    context.globalCompositeOperation = "screen";
     for (let index = 0; index < this.ribbons.length; index += 1) {
       const ribbon = this.ribbons[index];
       const force = velocityCurve(ribbon.velocity);
@@ -122,7 +122,7 @@ export class RibbonsGenerator implements VisualGenerator {
           ribbon.headX *
             Math.PI *
             (2.1 + profile.crystalline * 0.8 + profile.directionalPull * 0.35) +
-            time * 0.00042 * (8 + params.speed) +
+            time * 0.00042 * (0.7 + params.speed * 0.018) +
             ribbon.phase,
         ) *
         (0.035 +
@@ -250,12 +250,12 @@ export class RibbonsGenerator implements VisualGenerator {
     const force = velocityCurve(ribbon.velocity);
     const color = noteColor(frame, ribbon.note, index * 0.035);
     const life = clamp(ribbon.life, 0, 1);
+    const soloPresence = frame.music.notes.length <= 1 ? 1.42 : 1;
     const strandCount = qualityCount(
       frame,
-      2 +
-        Math.min(3, frame.music.notes.length) +
+      1 +
+        Math.min(2, Math.max(0, frame.music.notes.length - 1)) +
         profile.layerBonus +
-        Math.round(voice?.development ?? 0) +
         Math.round(voice?.structuralLayer ?? 0),
       2,
     );
@@ -266,6 +266,8 @@ export class RibbonsGenerator implements VisualGenerator {
         centered * (3.5 + frame.params.bloom * 0.045 + profile.float * 2.5);
       const broad = strand === strandCount;
       context.beginPath();
+      let previousX: number | null = null;
+      let previousY: number | null = null;
       for (
         let pointIndex = 0;
         pointIndex < ribbon.points.length;
@@ -297,26 +299,38 @@ export class RibbonsGenerator implements VisualGenerator {
           curl +
           profile.inward * age * age * 8 +
           profile.directionalPull * progress * progress * 12;
-        if (pointIndex === 0) context.moveTo(x, y);
-        else context.lineTo(x, y);
+        if (previousX === null || previousY === null) context.moveTo(x, y);
+        else
+          context.quadraticCurveTo(
+            previousX,
+            previousY,
+            (previousX + x) / 2,
+            (previousY + y) / 2,
+          );
+        previousX = x;
+        previousY = y;
       }
+      if (previousX !== null && previousY !== null)
+        context.lineTo(previousX, previousY);
       const alpha =
-        life * (ribbon.idle ? 0.055 : broad ? 0.055 : 0.14 + force * 0.14);
+        life * (ribbon.idle ? 0.045 : broad ? 0.038 : 0.12 + force * 0.11);
       glowStroke(
         context,
         color,
-        broad ? 13 + frame.params.glow * 0.15 : 4 + frame.params.glow * 0.085,
+        broad ? 8 + frame.params.glow * 0.085 : 3 + frame.params.glow * 0.06,
         alpha,
       );
       context.lineWidth = broad
-        ? 6 +
-          force * 5 +
-          (voice?.development ?? 0) * 2 +
-          (voice?.structuralLayer ?? 0) * 2.5
-        : 0.7 +
-          force * 1.8 +
-          (strand === 0 ? 0.5 : 0) +
-          (voice?.development ?? 0) * 0.35;
+        ? (3 +
+            force * 3 +
+            (voice?.development ?? 0) * 1.2 +
+            (voice?.structuralLayer ?? 0) * 1.4) *
+          soloPresence
+        : (0.65 +
+            force * 1.35 +
+            (strand === 0 ? 0.5 : 0) +
+            (voice?.development ?? 0) * 0.28) *
+          soloPresence;
       context.stroke();
     }
 

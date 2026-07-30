@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { experiences } from "../visuals/experiences";
 import { defaultParams } from "./presets";
-import { createRandomizedParameters } from "./randomizer";
+import {
+  createRandomizedParameters,
+  defaultRandomizerLocks,
+  loadRandomizerLocks,
+  saveRandomizerLocks,
+} from "./randomizer";
 
 describe("curated visual randomizer", () => {
+  beforeEach(() => localStorage.clear());
   it("recreates the same recipe from the same seed", () => {
     const first = createRandomizedParameters(defaultParams, 481516);
     const second = createRandomizedParameters(defaultParams, 481516);
@@ -54,5 +60,60 @@ describe("curated visual randomizer", () => {
     expect(discovered).toEqual(
       new Set(experiences.map((experience) => experience.id)),
     );
+  });
+
+  it("preserves locked properties while randomizing unlocked ones", () => {
+    const current = {
+      ...defaultParams,
+      mode: "metal" as const,
+      paletteId: "embers",
+      density: 17,
+      speed: 23,
+      rotation: 31,
+      idle: 11,
+      autoMotion: false,
+      trails: 44,
+      glow: 51,
+      symmetry: 13,
+    };
+    const result = createRandomizedParameters(current, 4567, {
+      experience: true,
+      palette: true,
+      density: true,
+      motion: true,
+      trails: true,
+      glow: true,
+      symmetry: true,
+    });
+    expect(result).toMatchObject({
+      mode: "metal",
+      paletteId: "embers",
+      density: 17,
+      speed: 23,
+      rotation: 31,
+      idle: 11,
+      autoMotion: false,
+      trails: 44,
+      glow: 51,
+      symmetry: 13,
+    });
+  });
+
+  it("replays deterministic recipes with the same locks", () => {
+    const locks = {
+      ...defaultRandomizerLocks,
+      experience: true,
+      trails: true,
+    };
+    const current = { ...defaultParams, mode: "portal" as const, trails: 91 };
+    expect(createRandomizedParameters(current, 919191, locks)).toEqual(
+      createRandomizedParameters(current, 919191, locks),
+    );
+  });
+
+  it("persists randomizer locks locally", () => {
+    const locks = { ...defaultRandomizerLocks, palette: true, motion: true };
+    saveRandomizerLocks(locks);
+    expect(loadRandomizerLocks()).toEqual(locks);
   });
 });
