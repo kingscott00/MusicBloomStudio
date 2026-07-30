@@ -2,7 +2,7 @@
 
 Music Bloom Studio is a browser-based generative-art instrument. Play a connected MIDI keyboard—or the built-in mouse, touch, and computer keyboard piano—and notes become flowers, orbital systems, ribbons, constellations, jellyfish, mandalas, nebulae, fractal forests, liquid metal, and dimensional portals.
 
-The app is local-first: it has no backend, account, analytics, or external API. Visual settings, the preferred MIDI device, and custom presets are stored in browser `localStorage`.
+The app is local-first: it has no backend, account, analytics, or external API. Visual settings, the preferred MIDI device, custom presets, palettes, laboratory state, and Visual Instruments are stored in browser `localStorage`.
 
 ## Stack
 
@@ -83,6 +83,36 @@ musical performance path and are never treated as Learn gestures.
 The optional developer simulator is available only in a development build at
 `?midi-sim=1`; it is not included in the normal production interface.
 
+## Visual Laboratory
+
+Choose **Open Visual Laboratory** for the optional advanced instrument-building
+workspace. The artwork remains visible, MIDI notes and sustain remain live, and
+the current design carries into the active edit scene.
+
+- Capture complete Scene A and Scene B states, then morph continuously between
+  them. Matching experiences interpolate parameters and palettes; different
+  experiences remain active together and use a bounded equal-power crossfade.
+- Shape six distinctive advanced controls for every experience, plus shared
+  Core and Musical Response controls.
+- Configure eight named performance macros. Each macro can target multiple
+  shared or experience-specific parameters with min/max ranges, inversion,
+  weight, and linear, ease-in, ease-out, or S-curve response.
+- Add up to sixteen automatic or music-derived modulation routes, including
+  three LFO speeds, smooth random drift, velocity, register, held-note count,
+  rhythm, chord tension, attack, held, release, and sustain.
+- Use deterministic Subtle, Moderate, or Wild mutation while respecting the
+  existing randomizer locks. Undo/redo history is bounded and coalesces rapid
+  slider changes.
+- Save the full design as a versioned Visual Instrument, or export/import it as
+  validated JSON. Curated example instruments demonstrate same-mode morphing,
+  cross-experience dissolves, macros, and musical modulation.
+- Build custom two-to-eight-stop palettes with reordering, hue rotation,
+  saturation, brightness, and temperature controls.
+
+Morph and Macro 1–8 are available to MIDI Learn. Button mappings can move
+between instruments, mutate, or load either scene. A saved instrument can be
+performed in Clean or Fullscreen view with an optional compact overlay.
+
 ## Musical mapping
 
 - Pitch class moves through the selected palette.
@@ -111,6 +141,7 @@ Web MIDI is expected to work in current Chromium-based desktop browsers, includi
 src/
   components/   React interface and canvas host
   hooks/        Performance, Web MIDI lifecycle, and mapping orchestration
+  lab/          Scenes, morphing, macros, modulation, mutation, history, instruments
   midi/         Raw MIDI parsing and live-control mapping math
   music/        Held notes, sustain, naming, chord detection, analysis
   presets/      Palettes and local preset persistence

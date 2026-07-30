@@ -63,5 +63,9 @@ export const palettes: ColorPalette[] = [
   },
 ];
 
-export const getPalette = (id: string): ColorPalette =>
-  palettes.find((palette) => palette.id === id) ?? palettes[0];
+export const getPalette = (
+  id: string,
+  customPalettes: ColorPalette[] = [],
+): ColorPalette =>
+  [...customPalettes, ...palettes].find((palette) => palette.id === id) ??
+  palettes[0];

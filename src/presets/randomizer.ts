@@ -198,6 +198,7 @@ export function createRandomizedParameters(
   current: VisualParameters,
   seed: number,
   locksOrWithinCurrent: RandomizerLocks | boolean = defaultRandomizerLocks,
+  customPaletteIds: string[] = [],
 ): VisualParameters {
   const random = mulberry32(seed);
   const locks =
@@ -218,13 +219,15 @@ export function createRandomizedParameters(
     constraints.palettes.length - 1,
     Math.floor(Math.pow(random(), 1.18) * constraints.palettes.length),
   );
+  const selectedPalette =
+    customPaletteIds.length && random() > 0.72
+      ? customPaletteIds[Math.floor(random() * customPaletteIds.length)]
+      : constraints.palettes[paletteIndex];
 
   return {
     ...current,
     mode,
-    paletteId: locks.palette
-      ? current.paletteId
-      : constraints.palettes[paletteIndex],
+    paletteId: locks.palette ? current.paletteId : selectedPalette,
     density: locks.density ? current.density : choose(constraints.density),
     speed: locks.motion ? current.speed : choose(constraints.speed),
     rotation: locks.motion ? current.rotation : choose(constraints.rotation),

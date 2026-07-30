@@ -24,6 +24,15 @@ export const parameterDefinitions: Record<
   responsiveness: { label: "Responsiveness", min: 0, max: 100 },
   background: { label: "Background light", min: 0, max: 100 },
   idle: { label: "Idle animation", min: 0, max: 100 },
+  morph: { label: "Laboratory morph", min: 0, max: 100 },
+  "macro-1": { label: "Macro 1", min: 0, max: 100 },
+  "macro-2": { label: "Macro 2", min: 0, max: 100 },
+  "macro-3": { label: "Macro 3", min: 0, max: 100 },
+  "macro-4": { label: "Macro 4", min: 0, max: 100 },
+  "macro-5": { label: "Macro 5", min: 0, max: 100 },
+  "macro-6": { label: "Macro 6", min: 0, max: 100 },
+  "macro-7": { label: "Macro 7", min: 0, max: 100 },
+  "macro-8": { label: "Macro 8", min: 0, max: 100 },
 };
 
 export interface MappingRuntime {
@@ -166,8 +175,11 @@ export function shouldTriggerMidiAction(
 export function mappingValueForDisplay(
   params: VisualParameters,
   target: MidiParameterTarget,
+  laboratoryValues: Partial<Record<MidiParameterTarget, number>> = {},
 ): number {
-  return params[target];
+  if (target in laboratoryValues) return laboratoryValues[target] ?? 0;
+  const value = params[target as keyof VisualParameters];
+  return typeof value === "number" ? value : 0;
 }
 
 export function loadMappingProfiles(): MidiMappingProfile[] {

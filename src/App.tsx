@@ -11,9 +11,11 @@ import {
   type VisualCanvasHandle,
 } from "./components/VisualCanvas";
 import { VisualControls } from "./components/VisualControls";
+import { VisualLaboratory } from "./components/VisualLaboratory";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMappings } from "./hooks/useMidiMappings";
 import { usePerformance } from "./hooks/usePerformance";
+import { useVisualLaboratory } from "./hooks/useVisualLaboratory";
 import { devSimulationFromSearch } from "./music/devSimulation";
 import {
   builtInPresets,
@@ -40,6 +42,7 @@ import { experiences } from "./visuals/experiences";
 
 const SETTINGS_KEY = "music-bloom-settings-v1";
 const FAVORITES_KEY = "music-bloom-favorite-presets-v1";
+const LAB_GUIDE_KEY = "music-bloom-laboratory-guide-v1";
 
 function loadSettings(): { params: VisualParameters; preferFlats: boolean } {
   try {
@@ -70,6 +73,7 @@ export default function App() {
   const [presetsOpen, setPresetsOpen] = useState(true);
   const [keyboardOpen, setKeyboardOpen] = useState(true);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [labGuideOpen, setLabGuideOpen] = useState(false);
   const [cleanView, setCleanView] = useState(false);
   const [customPresets, setCustomPresets] = useState(loadCustomPresets);
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
@@ -107,6 +111,9 @@ export default function App() {
     longestHeldDuration: 0,
     simulatedSustain: false,
     physicalSustain: false,
+    activeModulationRoutes: 0,
+    dualRender: false,
+    laboratoryFrameCostMs: 0,
   });
   const canvasRef = useRef<VisualCanvasHandle>(null);
   const stageRef = useRef<HTMLElement>(null);
@@ -120,6 +127,15 @@ export default function App() {
     setParams((current) => ({ ...current, ...changes }));
     setActivePreset("");
   }, []);
+  const replaceParams = useCallback((next: VisualParameters) => {
+    setParams(next);
+    setActivePreset("");
+  }, []);
+  const laboratory = useVisualLaboratory(
+    params,
+    replaceParams,
+    randomizerLocks,
+  );
   const performance = usePerformance(preferFlats);
   const devNoteOn = performance.noteOn;
   const devNoteOff = performance.noteOff;
@@ -139,8 +155,17 @@ export default function App() {
   const midiMappings = useMidiMappings({
     params,
     selectedDevice: selectedMidiDevice,
-    onParameterChange: updateParams,
+    onParameterChange: laboratory.isOpen
+      ? (changes) => laboratory.updateShared(changes, "MIDI parameter")
+      : updateParams,
     onAction: (action) => midiActionHandlerRef.current(action),
+    laboratoryValues: {
+      morph: laboratory.state.morph,
+      ...Object.fromEntries(
+        laboratory.state.macros.map((macro) => [macro.id, macro.value]),
+      ),
+    },
+    onLaboratoryParameterChange: laboratory.setMidiParameter,
   });
   midiControlHandlerRef.current = midiMappings.handleControl;
   const allPresets = useMemo(
@@ -271,7 +296,12 @@ export default function App() {
   const randomizeVisuals = (requestedSeed?: number) => {
     const seed = requestedSeed ?? randomSeed();
     setParams((current) =>
-      createRandomizedParameters(current, seed, randomizerLocks),
+      createRandomizedParameters(
+        current,
+        seed,
+        randomizerLocks,
+        laboratory.state.customPalettes.map((palette) => palette.id),
+      ),
     );
     setActivePreset("");
     canvasRef.current?.reset();
@@ -303,6 +333,19 @@ export default function App() {
     }
   };
 
+  const moveInstrument = (direction: -1 | 1) => {
+    const currentIndex = laboratory.instruments.findIndex(
+      (instrument) => instrument.id === laboratory.currentInstrumentId,
+    );
+    const start = currentIndex >= 0 ? currentIndex : 0;
+    const next =
+      laboratory.instruments[
+        (start + direction + laboratory.instruments.length) %
+          laboratory.instruments.length
+      ];
+    if (next) laboratory.loadInstrument(next);
+  };
+
   midiActionHandlerRef.current = (action) => {
     const actions: Record<MidiActionTarget, () => void> = {
       surprise: () => randomizeVisuals(),
@@ -311,6 +354,11 @@ export default function App() {
       "previous-experience": () => moveExperience(-1),
       "next-experience": () => moveExperience(1),
       reset: resetVisuals,
+      "previous-instrument": () => moveInstrument(-1),
+      "next-instrument": () => moveInstrument(1),
+      mutate: () => laboratory.mutate(laboratory.state.mutationStrength),
+      "load-scene-a": () => laboratory.restoreScene("A"),
+      "load-scene-b": () => laboratory.restoreScene("B"),
     };
     actions[action]();
   };
@@ -324,8 +372,20 @@ export default function App() {
     }
   };
 
+  const openLaboratory = () => {
+    laboratory.open();
+    if (localStorage.getItem(LAB_GUIDE_KEY) !== "seen") setLabGuideOpen(true);
+  };
+
+  const closeLabGuide = () => {
+    localStorage.setItem(LAB_GUIDE_KEY, "seen");
+    setLabGuideOpen(false);
+  };
+
   return (
-    <main className={`studio ${cleanView ? "clean-view" : ""}`}>
+    <main
+      className={`studio ${cleanView ? "clean-view" : ""} ${laboratory.isOpen ? "lab-open" : ""}`}
+    >
       <section className="art-stage" ref={stageRef}>
         <VisualCanvas
           ref={canvasRef}
@@ -334,6 +394,7 @@ export default function App() {
           physicalSustain={performance.physicalSustain}
           simulatedSustain={performance.simulatedSustain}
           onMetrics={diagnosticsOpen ? setRenderMetrics : undefined}
+          laboratory={laboratory.renderState}
         />
         <div className="canvas-vignette" aria-hidden="true" />
 
@@ -351,6 +412,14 @@ export default function App() {
             </span>
           </a>
           <nav className="top-actions" aria-label="Artwork actions">
+            <button
+              className="toolbar-button laboratory-entry"
+              onClick={openLaboratory}
+              title="Open the advanced instrument builder"
+            >
+              <span aria-hidden="true">✦</span>
+              <span>Open Visual Laboratory</span>
+            </button>
             <button
               className="toolbar-button"
               onClick={() => canvasRef.current?.savePng()}
@@ -447,6 +516,7 @@ export default function App() {
               onClearRandomizerLocks={() =>
                 setRandomizerLocks(defaultRandomizerLocks)
               }
+              availablePalettes={laboratory.palettes}
             />
           )}
         </aside>
@@ -509,6 +579,21 @@ export default function App() {
             <Icon name="close" size={16} /> Exit clean view <kbd>Esc</kbd>
           </button>
         )}
+        {cleanView &&
+          laboratory.currentInstrument &&
+          laboratory.state.overlayEnabled && (
+            <div className="performance-overlay">
+              <span>{laboratory.currentInstrument.name}</span>
+              <b>{Math.round(laboratory.state.morph)}% Morph</b>
+              <div>
+                {laboratory.state.macros.map((macro) => (
+                  <i key={macro.id}>
+                    {macro.name} {Math.round(macro.value)}
+                  </i>
+                ))}
+              </div>
+            </div>
+          )}
         {midiMappings.feedbackEnabled && midiMappings.feedback && (
           <div
             className="midi-value-overlay"
@@ -520,7 +605,69 @@ export default function App() {
           </div>
         )}
       </section>
-      <HelpPanel open={helpOpen} onClose={() => setHelpOpen(false)} />
+      {laboratory.isOpen && (
+        <VisualLaboratory
+          controller={laboratory}
+          params={params}
+          onMidiLearn={midiMappings.beginLearn}
+          onShowGuide={() => setLabGuideOpen(true)}
+        />
+      )}
+      <HelpPanel
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        onOpenLaboratoryGuide={() => {
+          openLaboratory();
+          setLabGuideOpen(true);
+        }}
+      />
+      {labGuideOpen && <LaboratoryGuide onClose={closeLabGuide} />}
     </main>
+  );
+}
+
+function LaboratoryGuide({ onClose }: { onClose: () => void }) {
+  const steps = [
+    ["Choose", "Select an experience and shape its distinctive visual laws."],
+    [
+      "Capture",
+      "Capture the current design into Scene A, then create Scene B.",
+    ],
+    [
+      "Morph",
+      "Move continuously between the two scenes while notes stay alive.",
+    ],
+    [
+      "Assign",
+      "Give a macro one or more targets, ranges, and response curves.",
+    ],
+    ["Modulate", "Add gentle automatic or music-derived evolution."],
+    ["Save", "Store the complete result as a playable Visual Instrument."],
+  ];
+  return (
+    <div className="modal-backdrop lab-guide-backdrop">
+      <section className="lab-guide" role="dialog" aria-modal="true">
+        <span className="eyebrow">VISUAL LABORATORY · QUICK TOUR</span>
+        <h2>Build a world you can perform.</h2>
+        <p>
+          MIDI notes, sustain, chord analysis, and lifecycle envelopes continue
+          normally throughout the laboratory.
+        </p>
+        <ol>
+          {steps.map(([title, description], index) => (
+            <li key={title}>
+              <span>{index + 1}</span>
+              <div>
+                <b>{title}</b>
+                <small>{description}</small>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <button className="primary-button" onClick={onClose}>
+          Enter the Laboratory
+        </button>
+      </section>
+    </div>
   );
 }

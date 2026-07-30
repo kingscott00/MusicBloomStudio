@@ -45,6 +45,11 @@ interface UseMidiMappingsOptions {
   selectedDevice?: MidiDevice;
   onParameterChange: (changes: Partial<VisualParameters>) => void;
   onAction: (action: MidiActionTarget) => void;
+  laboratoryValues?: Partial<Record<MidiParameterTarget, number>>;
+  onLaboratoryParameterChange?: (
+    target: MidiParameterTarget,
+    value: number,
+  ) => void;
 }
 
 const ACTIVE_PROFILE_KEY = "music-bloom-midi-active-profile-v1";
@@ -55,6 +60,8 @@ export function useMidiMappings({
   selectedDevice,
   onParameterChange,
   onAction,
+  laboratoryValues,
+  onLaboratoryParameterChange,
 }: UseMidiMappingsOptions) {
   const [profiles, setProfiles] = useState(loadMappingProfiles);
   const [activeProfileId, setActiveProfileId] = useState(
@@ -80,9 +87,14 @@ export function useMidiMappings({
   const learningRef = useRef(learning);
   const onParameterChangeRef = useRef(onParameterChange);
   const onActionRef = useRef(onAction);
+  const laboratoryValuesRef = useRef(laboratoryValues);
+  const onLaboratoryParameterChangeRef = useRef(onLaboratoryParameterChange);
   const runtimeRef = useRef(new Map<string, MappingRuntime>());
   const actionValuesRef = useRef(new Map<string, number>());
   const pendingChangesRef = useRef<Partial<VisualParameters>>({});
+  const pendingLaboratoryChangesRef = useRef<
+    Partial<Record<MidiParameterTarget, number>>
+  >({});
   const updateFrameRef = useRef<number | null>(null);
   const lastInspectorUpdateRef = useRef(0);
   const feedbackIdRef = useRef(0);
@@ -93,6 +105,8 @@ export function useMidiMappings({
   learningRef.current = learning;
   onParameterChangeRef.current = onParameterChange;
   onActionRef.current = onAction;
+  laboratoryValuesRef.current = laboratoryValues;
+  onLaboratoryParameterChangeRef.current = onLaboratoryParameterChange;
 
   useEffect(() => {
     saveMappingProfiles(profiles);
@@ -254,12 +268,20 @@ export function useMidiMappings({
           continue;
         }
         const target = mapping.target as MidiParameterTarget;
+        const laboratoryTarget =
+          target === "morph" || target.startsWith("macro-");
         const runtime =
           runtimeRef.current.get(mapping.id) ?? createMappingRuntime();
         runtimeRef.current.set(mapping.id, runtime);
         const current =
-          (pendingChangesRef.current[target] as number | undefined) ??
-          paramsRef.current[target];
+          (laboratoryTarget
+            ? (pendingLaboratoryChangesRef.current[target] ??
+              laboratoryValuesRef.current?.[target])
+            : ((pendingChangesRef.current[target as keyof VisualParameters] as
+                number | undefined) ??
+              (paramsRef.current[
+                target as keyof VisualParameters
+              ] as number))) ?? 50;
         const result = applyContinuousMapping(
           mapping,
           message,
@@ -269,7 +291,13 @@ export function useMidiMappings({
         if (result.waitingForPickup) waiting.add(mapping.id);
         else waiting.delete(mapping.id);
         if (result.value !== null) {
-          pendingChangesRef.current[target] = Math.round(result.value);
+          if (laboratoryTarget)
+            pendingLaboratoryChangesRef.current[target] = Math.round(
+              result.value,
+            );
+          else
+            pendingChangesRef.current[target as keyof VisualParameters] =
+              Math.round(result.value) as never;
           feedbackLabel = parameterDefinitions[target].label;
           feedbackValue = String(Math.round(result.value));
         }
@@ -282,14 +310,23 @@ export function useMidiMappings({
         setWaitingMappingIds([...waiting]);
       }
       if (
-        Object.keys(pendingChangesRef.current).length &&
+        (Object.keys(pendingChangesRef.current).length ||
+          Object.keys(pendingLaboratoryChangesRef.current).length) &&
         updateFrameRef.current === null
       ) {
         updateFrameRef.current = requestAnimationFrame(() => {
           updateFrameRef.current = null;
           const changes = pendingChangesRef.current;
+          const laboratoryChanges = pendingLaboratoryChangesRef.current;
           pendingChangesRef.current = {};
-          onParameterChangeRef.current(changes);
+          pendingLaboratoryChangesRef.current = {};
+          if (Object.keys(changes).length)
+            onParameterChangeRef.current(changes);
+          for (const [target, value] of Object.entries(laboratoryChanges))
+            onLaboratoryParameterChangeRef.current?.(
+              target as MidiParameterTarget,
+              value,
+            );
           if (feedbackEnabled && feedbackLabel)
             setFeedback({
               id: ++feedbackIdRef.current,

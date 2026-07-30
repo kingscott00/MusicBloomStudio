@@ -25,6 +25,11 @@ const actionDefinitions: Record<MidiActionTarget, string> = {
   "previous-experience": "Previous experience",
   "next-experience": "Next experience",
   reset: "Reset Visuals",
+  "previous-instrument": "Previous instrument",
+  "next-instrument": "Next instrument",
+  mutate: "Mutate instrument",
+  "load-scene-a": "Load Scene A",
+  "load-scene-b": "Load Scene B",
 };
 
 const learnOptions = [

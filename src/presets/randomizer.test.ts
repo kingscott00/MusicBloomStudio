@@ -18,6 +18,24 @@ describe("curated visual randomizer", () => {
     expect(first.recipeSeed).toBe(481516);
   });
 
+  it("can include locally created palettes without changing legacy recipes", () => {
+    const legacy = createRandomizedParameters(defaultParams, 481516);
+    expect(
+      createRandomizedParameters(defaultParams, 481516, undefined, []),
+    ).toEqual(legacy);
+    const discovered = new Set(
+      Array.from({ length: 80 }, (_, index) =>
+        createRandomizedParameters(
+          defaultParams,
+          index + 1,
+          defaultRandomizerLocks,
+          ["custom-starlight"],
+        ),
+      ).map((params) => params.paletteId),
+    );
+    expect(discovered.has("custom-starlight")).toBe(true);
+  });
+
   it("keeps comfort and rendering preferences while constraining visual values", () => {
     const current = {
       ...defaultParams,

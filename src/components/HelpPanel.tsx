@@ -3,9 +3,14 @@ import { Icon } from "./Icon";
 interface HelpPanelProps {
   open: boolean;
   onClose: () => void;
+  onOpenLaboratoryGuide?: () => void;
 }
 
-export function HelpPanel({ open, onClose }: HelpPanelProps) {
+export function HelpPanel({
+  open,
+  onClose,
+  onOpenLaboratoryGuide,
+}: HelpPanelProps) {
   if (!open) return null;
   return (
     <div
@@ -80,6 +85,22 @@ export function HelpPanel({ open, onClose }: HelpPanelProps) {
             permission. Try reconnecting it, pressing Connect MIDI again, or
             reloading the page. Close other music software that may hold the
             device. Safari and Firefox may not expose Web MIDI.
+          </HelpSection>
+          <HelpSection number="08" title="Build a Visual Instrument">
+            Open <b>Visual Laboratory</b> for A/B scenes, morphing, macros,
+            musical modulation, mutation, custom palettes, and complete saved
+            instruments. The artwork and MIDI input stay live while you edit.
+            {onOpenLaboratoryGuide && (
+              <button
+                className="inline-help-button"
+                onClick={() => {
+                  onClose();
+                  onOpenLaboratoryGuide();
+                }}
+              >
+                Open laboratory guide
+              </button>
+            )}
           </HelpSection>
         </div>
         <footer>

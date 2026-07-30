@@ -54,6 +54,27 @@ describe("MIDI performance mappings", () => {
     expect(scaleMidiValue(0, { ...mapping, invert: true })).toBe(100);
   });
 
+  it("keeps legacy profiles compatible while accepting Morph and macro targets", () => {
+    const profile: MidiMappingProfile = {
+      id: "performance",
+      name: "Performance",
+      deviceId: "controller-a",
+      deviceName: "Controller A",
+      mappings: [
+        mapping,
+        { ...mapping, id: "morph", controller: 22, target: "morph" },
+        { ...mapping, id: "macro", controller: 23, target: "macro-1" },
+      ],
+    };
+    const restored = importMappingProfiles(exportMappingProfiles([profile]));
+
+    expect(restored[0].mappings.map((item) => item.target)).toEqual([
+      "density",
+      "morph",
+      "macro-1",
+    ]);
+  });
+
   it("supports direct control and smoothing", () => {
     const direct = applyContinuousMapping(
       mapping,

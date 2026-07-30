@@ -163,6 +163,9 @@ export interface RenderMetrics {
   longestHeldDuration: number;
   simulatedSustain: boolean;
   physicalSustain: boolean;
+  activeModulationRoutes: number;
+  dualRender: boolean;
+  laboratoryFrameCostMs: number;
 }
 
 export interface ColorPalette {
@@ -232,7 +235,16 @@ export type MidiParameterTarget =
   | "bloom"
   | "responsiveness"
   | "background"
-  | "idle";
+  | "idle"
+  | "morph"
+  | "macro-1"
+  | "macro-2"
+  | "macro-3"
+  | "macro-4"
+  | "macro-5"
+  | "macro-6"
+  | "macro-7"
+  | "macro-8";
 
 export type MidiActionTarget =
   | "surprise"
@@ -240,7 +252,12 @@ export type MidiActionTarget =
   | "next-preset"
   | "previous-experience"
   | "next-experience"
-  | "reset";
+  | "reset"
+  | "previous-instrument"
+  | "next-instrument"
+  | "mutate"
+  | "load-scene-a"
+  | "load-scene-b";
 
 export interface MidiMapping {
   id: string;
@@ -289,6 +306,7 @@ export interface VisualFrame {
   qualityScale: number;
   dynamics: VisualDynamics;
   voices: VisualNoteVoice[];
+  advanced: Record<string, number>;
 }
 
 export type VisualNotePhase = "attack" | "held" | "sustain" | "release";

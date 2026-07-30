@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { pitchClassName } from "../music/notes";
-import { palettes } from "../presets/palettes";
+import { palettes as builtInPalettes } from "../presets/palettes";
 import { experiences } from "../visuals/experiences";
 import type {
   RandomizerLock,
@@ -8,6 +8,7 @@ import type {
   RenderMetrics,
   RenderQuality,
   VisualParameters,
+  ColorPalette,
 } from "../types";
 import { Icon } from "./Icon";
 
@@ -22,6 +23,7 @@ interface VisualControlsProps {
   randomizerLocks: RandomizerLocks;
   onRandomizerLockChange: (lock: RandomizerLock, value: boolean) => void;
   onClearRandomizerLocks: () => void;
+  availablePalettes?: ColorPalette[];
 }
 
 const lockLabels: Array<[RandomizerLock, string]> = [
@@ -63,6 +65,7 @@ export function VisualControls({
   randomizerLocks,
   onRandomizerLockChange,
   onClearRandomizerLocks,
+  availablePalettes = builtInPalettes,
 }: VisualControlsProps) {
   const [performanceOpen, setPerformanceOpen] = useState(true);
   const [recipeInput, setRecipeInput] = useState(String(params.recipeSeed));
@@ -179,7 +182,7 @@ export function VisualControls({
           value={params.paletteId}
           onChange={(event) => onChange({ paletteId: event.target.value })}
         >
-          {palettes.map((palette) => (
+          {availablePalettes.map((palette) => (
             <option value={palette.id} key={palette.id}>
               {palette.name}
             </option>
@@ -236,6 +239,18 @@ export function VisualControls({
                 <Metric
                   label="Active elements"
                   value={String(metrics.activeElements)}
+                />
+                <Metric
+                  label="Modulation routes"
+                  value={String(metrics.activeModulationRoutes)}
+                />
+                <Metric
+                  label="Morph renderer"
+                  value={metrics.dualRender ? "Dual · bounded" : "Single"}
+                />
+                <Metric
+                  label="Laboratory cost"
+                  value={`${metrics.laboratoryFrameCostMs.toFixed(1)} ms`}
                 />
                 <Metric label="Held notes" value={String(metrics.heldNotes)} />
                 <Metric

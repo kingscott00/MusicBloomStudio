@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import { getPalette } from "../presets/palettes";
+import { interpolatePalette, resolveLaboratoryFrame } from "../lab/engine";
 import { calculateVisualVoices } from "../music/envelopes";
 import type {
   HeldNote,
@@ -11,6 +12,7 @@ import type {
   VisualMode,
   VisualParameters,
 } from "../types";
+import type { LaboratoryRenderState, LaboratoryScene } from "../lab/types";
 import { rgba } from "../utils/color";
 import { clamp, lerp } from "../utils/math";
 import { BloomGenerator } from "../visuals/BloomGenerator";
@@ -35,6 +37,7 @@ interface VisualCanvasProps {
   physicalSustain: boolean;
   simulatedSustain: boolean;
   onMetrics?: (metrics: RenderMetrics) => void;
+  laboratory?: LaboratoryRenderState;
 }
 
 const qualityPreset: Record<Exclude<RenderQuality, "auto">, number> = {
@@ -45,13 +48,14 @@ const qualityPreset: Record<Exclude<RenderQuality, "auto">, number> = {
 
 export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
   function VisualCanvas(
-    { music, params, physicalSustain, simulatedSustain, onMetrics },
+    { music, params, physicalSustain, simulatedSustain, onMetrics, laboratory },
     ref,
   ) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const musicRef = useRef(music);
     const paramsRef = useRef(params);
     const metricsRef = useRef(onMetrics);
+    const laboratoryRef = useRef(laboratory);
     const sustainSourcesRef = useRef({
       physical: physicalSustain,
       simulated: simulatedSustain,
@@ -72,6 +76,7 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
     musicRef.current = music;
     paramsRef.current = params;
     metricsRef.current = onMetrics;
+    laboratoryRef.current = laboratory;
     sustainSourcesRef.current = {
       physical: physicalSustain,
       simulated: simulatedSustain,
@@ -125,6 +130,13 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
       let modeTransition = 0;
       let cachedPaletteId = paramsRef.current.paletteId;
       let cachedPalette = getPalette(cachedPaletteId);
+      let lastDualRender = false;
+      let lastActiveRoutes = 0;
+      let laboratoryFrameCost = 0;
+      const layerA = document.createElement("canvas");
+      const layerB = document.createElement("canvas");
+      const layerContextA = layerA.getContext("2d");
+      const layerContextB = layerB.getContext("2d");
 
       const getQualityScale = (): number => {
         const setting = paramsRef.current.quality;
@@ -159,6 +171,12 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
         appliedRatio = ratio;
         canvas.width = Math.round(cssWidth * ratio);
         canvas.height = Math.round(cssHeight * ratio);
+        layerA.width = canvas.width;
+        layerA.height = canvas.height;
+        layerB.width = canvas.width;
+        layerB.height = canvas.height;
+        layerContextA?.setTransform(ratio, 0, 0, ratio, 0, 0);
+        layerContextB?.setTransform(ratio, 0, 0, ratio, 0, 0);
         context.setTransform(ratio, 0, 0, ratio, 0, 0);
         context.fillStyle = getPalette(paramsRef.current.paletteId).background;
         context.fillRect(0, 0, cssWidth, cssHeight);
@@ -210,9 +228,18 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
         }
 
         const qualityScale = getQualityScale();
+        const laboratoryState = laboratoryRef.current;
+        const activeModes = laboratoryState?.enabled
+          ? new Set([
+              laboratoryState.sceneA.params.mode,
+              laboratoryState.sceneB.params.mode,
+            ])
+          : new Set([currentParams.mode]);
         const activeElements =
-          generators.current[currentParams.mode].getActiveCount() +
-          voices.length;
+          [...activeModes].reduce(
+            (total, mode) => total + generators.current[mode].getActiveCount(),
+            0,
+          ) + voices.length;
         let attackingNotes = 0;
         let heldPhaseNotes = 0;
         let sustainedNotes = 0;
@@ -253,11 +280,16 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           longestHeldDuration,
           simulatedSustain: sustainSources.simulated,
           physicalSustain: sustainSources.physical,
+          activeModulationRoutes: lastActiveRoutes,
+          dualRender: lastDualRender,
+          laboratoryFrameCostMs:
+            laboratoryFrameCost / Math.max(1, frameCounter),
         });
         lastMetricsAt = time;
         metricsStartedAt = time;
         frameCounter = 0;
         renderCostTotal = 0;
+        laboratoryFrameCost = 0;
       };
 
       const draw = (time: number) => {
@@ -278,8 +310,15 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           0,
           1,
         );
-        if (currentParams.mode !== lastMode) {
-          lastMode = currentParams.mode;
+        const laboratoryState = laboratoryRef.current;
+        const previewMode =
+          laboratoryState?.enabled && laboratoryState.morph >= 50
+            ? laboratoryState.sceneB.params.mode
+            : laboratoryState?.enabled
+              ? laboratoryState.sceneA.params.mode
+              : currentParams.mode;
+        if (previewMode !== lastMode) {
+          lastMode = previewMode;
           modeTransition = 1;
         }
         const hasLiveLifecycle = currentMusic.noteLifecycles.some(
@@ -344,10 +383,14 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
               physicallyHeld: false,
               sustained: false,
             };
-            generators.current[currentParams.mode].noteTriggered(
-              triggered,
-              currentMusic,
-            );
+            const triggerModes = laboratoryState?.enabled
+              ? new Set([
+                  laboratoryState.sceneA.params.mode,
+                  laboratoryState.sceneB.params.mode,
+                ])
+              : new Set([currentParams.mode]);
+            for (const mode of triggerModes)
+              generators.current[mode].noteTriggered(triggered, currentMusic);
             attackEnvelope = Math.max(
               attackEnvelope,
               0.28 + (attack.velocity / 127) * 0.72,
@@ -394,13 +437,37 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
         };
 
         const renderStartedAt = performance.now();
-        if (currentParams.paletteId !== cachedPaletteId) {
+        const resolved = laboratoryState?.enabled
+          ? resolveLaboratoryFrame(
+              laboratoryState,
+              currentMusic,
+              dynamics,
+              time,
+            )
+          : null;
+        const primaryScene: LaboratoryScene | null = resolved?.primary ?? null;
+        const effectiveParams = primaryScene?.params ?? currentParams;
+        const customPalettes = laboratoryState?.customPalettes ?? [];
+        if (!resolved && currentParams.paletteId !== cachedPaletteId) {
           cachedPaletteId = currentParams.paletteId;
-          cachedPalette = getPalette(cachedPaletteId);
+          cachedPalette = getPalette(cachedPaletteId, customPalettes);
         }
-        const palette = cachedPalette;
+        let palette = resolved
+          ? getPalette(resolved.primary.params.paletteId, customPalettes)
+          : cachedPalette;
+        if (resolved && laboratoryState) {
+          const paletteA = getPalette(
+            laboratoryState.sceneA.params.paletteId,
+            customPalettes,
+          );
+          const paletteB = getPalette(
+            laboratoryState.sceneB.params.paletteId,
+            customPalettes,
+          );
+          palette = interpolatePalette(paletteA, paletteB, resolved.morph);
+        }
         const fade =
-          Math.max(0.02, (108 - currentParams.trails) / 430) *
+          Math.max(0.02, (108 - effectiveParams.trails) / 430) *
           (currentMusic.sustain ? 0.58 : 1);
         context.globalCompositeOperation = "source-over";
         context.shadowBlur = 0;
@@ -411,28 +478,93 @@ export const VisualCanvas = forwardRef<VisualCanvasHandle, VisualCanvasProps>(
           context.fillRect(0, 0, cssWidth, cssHeight);
           modeTransition *= Math.exp(-delta / 120);
         }
-        if (currentParams.background > 0) {
+        if (effectiveParams.background > 0) {
           context.fillStyle = rgba(
             palette.colors[0],
-            currentParams.background / 5000,
+            effectiveParams.background / 5000,
           );
           context.fillRect(0, 0, cssWidth, cssHeight);
         }
 
         const qualityScale = getQualityScale();
-        generators.current[currentParams.mode].render(context, {
-          width: cssWidth,
-          height: cssHeight,
-          time,
-          delta,
-          params: currentParams,
-          music: currentMusic,
-          colors: palette.colors,
-          background: palette.background,
-          qualityScale,
-          dynamics,
-          voices,
-        });
+        const renderScene = (
+          targetContext: CanvasRenderingContext2D,
+          scene: LaboratoryScene | null,
+          opacity = 1,
+          internalQuality = qualityScale,
+        ) => {
+          const sceneParams = scene?.params ?? currentParams;
+          let scenePalette =
+            scene && resolved?.dualRender
+              ? getPalette(scene.params.paletteId, customPalettes)
+              : palette;
+          const scenePaletteOffset = Math.round(
+            scene?.advanced["global.palettePosition"] ?? 0,
+          );
+          if (scenePaletteOffset)
+            scenePalette = {
+              ...scenePalette,
+              colors: scenePalette.colors.map(
+                (_, index, colors) =>
+                  colors[
+                    (index +
+                      Math.round((scenePaletteOffset / 100) * colors.length)) %
+                      colors.length
+                  ],
+              ),
+            };
+          generators.current[sceneParams.mode].render(targetContext, {
+            width: cssWidth,
+            height: cssHeight,
+            time,
+            delta,
+            params: sceneParams,
+            music: currentMusic,
+            colors: scenePalette.colors,
+            background: scenePalette.background,
+            qualityScale: internalQuality,
+            dynamics,
+            voices,
+            advanced: scene?.advanced ?? {},
+          });
+          targetContext.globalAlpha = opacity;
+        };
+        lastDualRender = Boolean(
+          resolved?.dualRender &&
+          resolved.secondary &&
+          layerContextA &&
+          layerContextB,
+        );
+        lastActiveRoutes = resolved?.activeRoutes ?? 0;
+        const labStartedAt = performance.now();
+        if (
+          resolved?.dualRender &&
+          resolved.secondary &&
+          layerContextA &&
+          layerContextB
+        ) {
+          for (const layerContext of [layerContextA, layerContextB]) {
+            layerContext.save();
+            layerContext.setTransform(1, 0, 0, 1, 0, 0);
+            layerContext.clearRect(0, 0, layerA.width, layerA.height);
+            layerContext.restore();
+          }
+          // Two worlds share the same lifecycle input, but each receives a
+          // bounded detail budget to avoid a 2x thermal cost.
+          const dualQuality = qualityScale * 0.64;
+          renderScene(layerContextA, resolved.primary, 1, dualQuality);
+          renderScene(layerContextB, resolved.secondary, 1, dualQuality);
+          context.save();
+          context.globalCompositeOperation = "lighter";
+          context.globalAlpha = resolved.primaryOpacity;
+          context.drawImage(layerA, 0, 0, cssWidth, cssHeight);
+          context.globalAlpha = resolved.secondaryOpacity;
+          context.drawImage(layerB, 0, 0, cssWidth, cssHeight);
+          context.restore();
+        } else {
+          renderScene(context, primaryScene, 1, qualityScale);
+        }
+        laboratoryFrameCost += performance.now() - labStartedAt;
         renderCostTotal += performance.now() - renderStartedAt;
 
         if (time - lastMetricsAt > 800) {
